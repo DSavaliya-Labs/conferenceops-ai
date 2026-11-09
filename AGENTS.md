@@ -39,9 +39,11 @@ and shows a platform run by an AI operations team.
 | `backend/conferenceops/` | `core_app`, `discovery_app`, `worker`, shared domain, services and repositories |
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
-| `contracts/` | Committed OpenAPI schema and the generated Angular client |
+| `backend/conferenceops/personas.py` | The persona switcher's list, `GET /api/v1/demo/profiles` on core-api (public fields only), and the `X-Demo-Profile-ID` header (AUTHZ-1) |
+| `backend/conferenceops/where_next.py`, `where_next_data.py` | "Where should I go next?", `POST /api/v1/recommendations/next` on discovery-api: hard rules, then ranking, with checkable reasons; the ranking weights live in `where_next.py` |
+| `contracts/` | Committed OpenAPI schema (core-api and discovery-api in one document, from `python -m conferenceops.export_openapi`) and the generated Angular client |
 | `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it |
-| `deploy/chart/` | Helm chart |
+| `deploy/chart/` | Helm chart: the web app (the public entry point), the APIs, the worker, PostgreSQL, Elasticsearch and the collector |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
 | `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
@@ -114,11 +116,14 @@ DATABASE_URL=... uv run pytest -q -m integration                     # integrati
 uv run core-api                               # or discovery-api, worker; listens on :8080
 docker build -t conferenceops-backend backend # one image; the Deployment picks the command
 helm dependency build deploy/chart && helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml \
-  --set image.repository=x --set image.tag=y   # render the chart as CI does
+  --set image.repository=x --set image.tag=y \
+  --set web.image.repository=x --set web.image.tag=y   # render the chart as CI does
 ```
 
-The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com. Every merge to `main` deploys there
-(`deploy.yml`), and each deploy is marked in Dash0 as a `dash0.deployment` event.
+The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com, and it serves the web app: nginx serves the
+Angular app and `/config.json`, and proxies search, recommendations and Ask to discovery-api and every other `/api`
+route to core-api. Every merge to `main` builds both images, deploys them there (`deploy.yml`), checks that the URL
+serves the app, its config and a search, and marks the deploy in Dash0 as a `dash0.deployment` event.
 
 ## Web app commands
 
@@ -127,6 +132,8 @@ cd apps/web && npm ci
 npx ng test --watch=false   # unit and accessibility tests (Vitest)
 npx ng build                # production build into dist/web/browser
 docker build -t conferenceops-web apps/web   # nginx (unprivileged, :8080) serving the app, /config.json and the /api proxy
+# Run it as AKS does: a read-only root, where only the chart's two emptyDir paths are writable
+docker run --read-only --tmpfs /etc/nginx/conf.d:mode=0777 --tmpfs /tmp:mode=0777 -p 8081:8080 conferenceops-web
 ```
 
 ## Never

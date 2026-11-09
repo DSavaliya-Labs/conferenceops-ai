@@ -35,11 +35,16 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   - **"Which talk matches my interests?"** The query runs a hybrid search in Elasticsearch: BM25 keyword matching
     and kNN over OpenAI embeddings, with the same filters on both, fused with reciprocal rank fusion (RRF). If
     embeddings are unavailable, search falls back to keywords and says so.
-  - **"Where should I go next?"** applies hard rules before any ranking: the talk is still ahead on the venue's clock
-    (`America/Denver`), doesn't clash with the attendee's agenda, and matches a requested level. The talks that pass
-    are ranked by how well they match the attendee's history, bookmarks and stated interests. OpenAI explains the
-    picks but may only pick from what search returned; every ID is checked against the database, and a slow or
-    failed model call falls back to a deterministic answer.
+  - **"Where should I go next?"** applies hard rules before any ranking: the talk hasn't started on the venue's
+    clock (`America/Denver`), falls in the chosen window (rest of today, tomorrow morning, or any time), isn't on or
+    clashing with the attendee's agenda, isn't at a level they left out, and has published captioning when they asked
+    for captions. The talks that pass are ranked by the attendee's stated interests and their CloudBridge history and
+    bookmarks, and every card says why, in reasons you can check. The answer is deterministic. A generated
+    explanation (OpenAI, picking only from these cards, every ID checked, this answer as the fallback) isn't built
+    yet.
+  - **"Viewing as"** switches between the eight fictional demo personas. The server looks the persona up from the
+    `X-Demo-Profile-ID` header and trusts nothing else the browser says about her; it is a demo switch, not a
+    sign-in.
 - **Honest accessibility facts.** Only what the official KubeCon
   [Inclusion + Accessibility page](https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/attend/inclusion-accessibility/)
   publishes (read on November 6, 2026), each shown with its source link: Wordly captioning, reserved seating, quiet

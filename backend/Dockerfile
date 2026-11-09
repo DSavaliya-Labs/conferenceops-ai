@@ -16,7 +16,8 @@ FROM python:3.12-slim
 RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app
 WORKDIR /app
 COPY --from=build /app /app
-ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+# Stable HTTP semantic conventions on request spans: the Dash0 check rules and dashboard query those names.
+ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 OTEL_SEMCONV_STABILITY_OPT_IN=http
 USER 10001
 EXPOSE 8080
 CMD ["core-api"]
