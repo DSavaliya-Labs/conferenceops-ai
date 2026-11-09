@@ -26,7 +26,8 @@ hand at 21:28:
 | Deploy on every merge, marked in Dash0 | 12 deploy runs today: 10 succeeded, 1 failed and was fixed by the next merge, 1 was cancelled ([deploys](#deploys)) |
 
 **Pending** (not claimed): the incident run and its recovery window, Radar's verify step after #35, the attendee
-portal UI pull request, CloudBridge replays and transcripts (and captions with them), and a dictation demo on an
+portal UI pull request, CloudBridge replays and transcripts (and captions with them: opened as
+[#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) at 21:30, not merged), and a dictation demo on an
 HTTPS origin. Details under each track and in [Known limitations](#known-limitations).
 
 Live progress: the [Build log](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) (issue #1, one entry per
@@ -80,8 +81,9 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
 
 ### Gitar: never merge broken
 
-Every change after the bootstrap commit went through a pull request that Gitar reviewed; 34 pull requests were
-opened today, 25 merged, 8 closed without merging (replaced, see the gotcha), 1 held open as evidence.
+Every change after the bootstrap commit went through a pull request that Gitar reviewed. By 21:30, 34 pull requests
+had been opened: 25 merged, 8 closed without merging (replaced, see the gotcha), 1 held open as evidence. More are
+open since; the pull request list is live.
 
 | What | Where |
 |---|---|
@@ -189,7 +191,7 @@ runs Radar again on the deployed worker and posts the verdict on #35.
 | Hard rules first | [#30](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/30): venue clock, window, agenda clashes, level, and captions when asked for, before any ranking; reasons `INTEREST_MATCH`, `HISTORY_MATCH` ("Similar to … which you attended at CloudBridge Summit 2026"), `BOOKMARK_MATCH`, `CAPTIONS_PUBLISHED` on every card |
 | Keyboard-first app | a skip link, labels, one polite live region ([`app.html`](apps/web/src/app/app.html)), tested in Vitest and in the `ui-smoke-accessibility` CI job; [#7](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/7), [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) |
 | Spoken questions | [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) merged and deployed; the audio and the text never reach logs or spans. A demo on an HTTPS origin: **pending** (the public URL is HTTP, so browsers won't grant the microphone there) |
-| Captioned replays | **pending** with the replay pull request: the CloudBridge archive holds the program and the personas today, no replays or transcripts |
+| Captioned replays | **pending** with the replay pull request, [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37), open and not merged: on `main` and the public URL, the CloudBridge archive holds the program and the personas, no replays or transcripts |
 
 ### Capacity: measured, then enforced
 
@@ -384,7 +386,8 @@ flowchart TB
   closed without merging.
 - **No generated explanations.** "Where should I go next?" is the deterministic answer only; the typed Ask bar is
   hybrid search only.
-- **The archive is a program, not a media library.** CloudBridge has no replays, transcripts or captions loaded yet.
+- **The archive is a program, not a media library.** On `main`, CloudBridge has no replays, transcripts or captions;
+  [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) proposes them and is not merged.
 - **Dictation needs HTTPS.** The public URL is plain HTTP, so the microphone works only on a local or port-forwarded
   instance.
 - **Telemetry gaps.** OpenAI and PostgreSQL calls aren't traced (a failure there shows in discovery-api's logs), the
