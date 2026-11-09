@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
@@ -20,33 +21,47 @@ def test_venue_time_uses_the_event_time_zone():
 class FakeES:
     def __init__(self):
         self.calls = []
-        self.src = {
-            "s1": {
-                "title": "Tracing Everything",
-                "event_name": "KubeCon",
-                "conference": "kubecon-na-2026",
-                "is_fictional": False,
-                "starts_at": "2026-11-10T17:30:00+00:00",
-                "room": "Hall DE",
-                "level": "beginner",
-                "topics": ["Observability"],
-            },
-            "s2": {
-                "title": "Policy as Code",
-                "event_name": "KubeCon",
-                "conference": "kubecon-na-2026",
-                "is_fictional": False,
-                "starts_at": "2026-11-11T16:00:00+00:00",
-            },
-        }
 
     def search(self, index, size, source, query=None, knn=None):
         self.calls.append("knn" if knn else "bm25")
         assert {"term": {"is_service": False}} in ((knn or {}).get("filter") or query["bool"]["filter"])
-        return {"hits": {"hits": [{"_id": "s2"}, {"_id": "s1"}] if knn else [{"_id": "s1"}]}}
+        return {"hits": {"hits": [{"_id": "s2"}, {"_id": "s1"}] if knn else [{"_id": "s1"}, {"_id": "deleted"}]}}
 
-    def mget(self, index, ids):
-        return {"docs": [{"_id": i, "found": True, "_source": self.src[i]} for i in ids]}
+
+class FakeSessions:
+    def __init__(self, rows):
+        self.rows = rows
+        self.calls = []
+
+    def load_visible(self, ids, conference=None):
+        self.calls.append((ids, conference))
+        return {
+            doc_id: self.rows[doc_id]
+            for doc_id in ids
+            if doc_id in self.rows and (conference is None or self.rows[doc_id][1].slug == conference)
+        }
+
+
+def search_row(title, starts_at, room=None):
+    session = SimpleNamespace(
+        title=title,
+        starts_at=starts_at,
+        level=SimpleNamespace(value="beginner"),
+        topics=["Observability"],
+        is_service=False,
+    )
+    conference = SimpleNamespace(name="Canonical KubeCon", slug="kubecon-na-2026", is_fictional=False)
+    room_row = SimpleNamespace(name=room) if room else None
+    return session, conference, room_row
+
+
+def fake_sessions():
+    return FakeSessions(
+        {
+            "s1": search_row("Canonical Tracing", datetime(2026, 11, 10, 17, 30, tzinfo=UTC), "Hall DE"),
+            "s2": search_row("Canonical Policy", datetime(2026, 11, 11, 16, 0, tzinfo=UTC)),
+        }
+    )
 
 
 class FakeEmbedder:
@@ -59,18 +74,24 @@ class FakeEmbedder:
         return [[0.1] * 1536 for _ in texts]
 
 
-def test_hybrid_search_fuses_both_channels_with_the_same_filters():
+def test_hybrid_search_fuses_both_channels_and_revalidates_hits_against_postgres():
     es = FakeES()
-    response = HybridSearch(es, FakeEmbedder()).search(SearchRequest(query="tracing"))
+    sessions = fake_sessions()
+    response = HybridSearch(es, FakeEmbedder(), sessions).search(
+        SearchRequest(query="tracing", conference="kubecon-na-2026")
+    )
     assert es.calls == ["bm25", "knn"]
+    assert sessions.calls == [(["s1", "s2", "deleted"], "kubecon-na-2026")]
     assert response.retrieval_mode == "hybrid"
-    assert [r.id for r in response.results] == ["s1", "s2"]  # s1 is in both channels
+    assert [r.id for r in response.results] == ["s1", "s2"]  # deleted is no longer visible in PostgreSQL
+    assert response.results[0].title == "Canonical Tracing"  # hit fields come from PostgreSQL, not Elasticsearch
+    assert response.results[0].event == "Canonical KubeCon"
     assert response.results[0].starts_at_venue == "Tue Nov 10, 10:30 AM MST"
 
 
 def test_search_falls_back_to_keywords_when_the_model_fails(caplog):
     es = FakeES()
-    response = HybridSearch(es, FakeEmbedder(fail=True)).search(SearchRequest(query="secret-words"))
+    response = HybridSearch(es, FakeEmbedder(fail=True), fake_sessions()).search(SearchRequest(query="secret-words"))
     assert es.calls == ["bm25"]
     assert response.retrieval_mode == "lexical"
     assert [r.id for r in response.results] == ["s1"]

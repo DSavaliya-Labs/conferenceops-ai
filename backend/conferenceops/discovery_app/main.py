@@ -11,7 +11,7 @@ from fastapi import Depends, HTTPException
 from openai import OpenAI
 
 from conferenceops.indexing import OpenAIEmbedder
-from conferenceops.search import HybridSearch, SearchBackend, SearchRequest, SearchResponse
+from conferenceops.search import HybridSearch, PostgresSearchSessions, SearchBackend, SearchRequest, SearchResponse
 from conferenceops.settings import settings
 from conferenceops.web import create_app
 
@@ -29,7 +29,7 @@ def get_search() -> SearchBackend:
     es = Elasticsearch(cfg.elasticsearch_url, basic_auth=auth, request_timeout=5)
     # A short timeout: a slow model must not hold a search hostage; search falls back to keywords (AI-1).
     client = OpenAI(api_key=cfg.openai_api_key or "missing", timeout=3, max_retries=0)
-    return HybridSearch(es, OpenAIEmbedder(client, cfg.openai_embedding_model))
+    return HybridSearch(es, OpenAIEmbedder(client, cfg.openai_embedding_model), PostgresSearchSessions())
 
 
 @app.post("/api/v1/search", response_model=SearchResponse, response_model_by_alias=True)

@@ -5,12 +5,17 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime
 from typing import Literal, Protocol
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+from sqlalchemy import select
 
+from conferenceops.db import transaction
 from conferenceops.indexing import ALIAS, Embedder
+from conferenceops.models import Conference, Room
+from conferenceops.models import Session as CatalogSession
 
 log = logging.getLogger("conferenceops.search")
 
@@ -51,6 +56,41 @@ class SearchBackend(Protocol):
     def search(self, request: SearchRequest) -> SearchResponse: ...
 
 
+class SearchSessions(Protocol):
+    def load_visible(
+        self, ids: Sequence[str], conference: str | None
+    ) -> dict[str, tuple[CatalogSession, Conference, Room | None]]: ...
+
+
+class PostgresSearchSessions:
+    def load_visible(
+        self, ids: Sequence[str], conference: str | None
+    ) -> dict[str, tuple[CatalogSession, Conference, Room | None]]:
+        session_ids = []
+        for doc_id in ids:
+            try:
+                session_id = UUID(doc_id)
+            except ValueError:
+                continue
+            if session_id not in session_ids:
+                session_ids.append(session_id)
+        if not session_ids:
+            return {}
+
+        statement = (
+            select(CatalogSession, Conference, Room)
+            .join(Conference, Conference.id == CatalogSession.conference_id)
+            .outerjoin(Room, Room.id == CatalogSession.room_id)
+            .where(CatalogSession.id.in_(session_ids), CatalogSession.is_service.is_(False))
+        )
+        if conference:
+            statement = statement.where(Conference.slug == conference)
+
+        with transaction() as db:
+            rows = db.execute(statement).all()
+        return {str(session.id): (session, event, room) for session, event, room in rows}
+
+
 def rrf_fuse(rankings: Sequence[Sequence[str]], k: int = RRF_K) -> list[str]:
     """Reciprocal rank fusion: score(d) = sum(1 / (k + rank)), ranks start at 1. Ties break by ID, so the order is
     deterministic."""
@@ -74,9 +114,10 @@ def _filters(request: SearchRequest) -> list[dict]:
 
 
 class HybridSearch:
-    def __init__(self, es, embedder: Embedder):
+    def __init__(self, es, embedder: Embedder, sessions: SearchSessions):
         self.es = es
         self.embedder = embedder
+        self.sessions = sessions
 
     def _bm25(self, request: SearchRequest) -> list[str]:
         body = {
@@ -112,22 +153,22 @@ class HybridSearch:
         ids = rrf_fuse(rankings)[: request.limit]
         if not ids:
             return SearchResponse(results=[], retrieval_mode=mode)
-        docs = {d["_id"]: d["_source"] for d in self.es.mget(index=ALIAS, ids=ids)["docs"] if d.get("found")}
-        results = [_hit(doc_id, docs[doc_id]) for doc_id in ids if doc_id in docs]
+        rows = self.sessions.load_visible(ids, conference=request.conference)
+        results = [_hit_from_row(doc_id, *rows[doc_id]) for doc_id in ids if doc_id in rows]
         return SearchResponse(results=results, retrieval_mode=mode)
 
 
-def _hit(doc_id: str, src: dict) -> SearchHit:
-    starts = datetime.fromisoformat(src["starts_at"])
+def _hit_from_row(doc_id: str, session: CatalogSession, conference: Conference, room: Room | None) -> SearchHit:
+    starts = session.starts_at
     return SearchHit(
         id=doc_id,
-        title=src["title"],
-        event=src["event_name"],
-        conference=src["conference"],
-        is_fictional=src["is_fictional"],
+        title=session.title,
+        event=conference.name,
+        conference=conference.slug,
+        is_fictional=conference.is_fictional,
         starts_at=starts,
         starts_at_venue=venue_time(starts),
-        room=src.get("room"),
-        level=src.get("level"),
-        topics=src.get("topics") or [],
+        room=room.name if room else None,
+        level=session.level.value if session.level else None,
+        topics=session.topics or [],
     )
