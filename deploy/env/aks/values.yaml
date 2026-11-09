@@ -8,7 +8,7 @@ public:
 
 components:
   discovery:
-    replicas: 1
+    replicas: 3
     # The per-pod admission limit, set from one pod's measured capacity (ops/load/README.md): C_pod = 64 requests/s
     # at about 0.38 s per request (p95 411 ms) on 2026-11-09, image 4da0ba2, so about 24 requests in progress by
     # Little's law. That leaves 16 of the 40 worker threads for the health probes, which must keep answering under
