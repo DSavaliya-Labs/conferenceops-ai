@@ -25,6 +25,13 @@
         @if (response(); as r) {
           <p class="source">{{ sourceLabel() }}</p>
           <p class="answer">{{ r.answer }}</p>
+          <p class="actions">
+            <app-read-aloud-button
+              id="ask-answer"
+              [text]="speech()"
+              label="the answer and its citations"
+            />
+          </p>
           @if (citations().length > 0) {
             <h3>Cited moments</h3>
             <ol class="citations">

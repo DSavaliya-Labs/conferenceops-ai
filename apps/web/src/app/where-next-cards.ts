@@ -1,3 +1,4 @@
+import { ReadAloudButton } from './read-aloud';
 import { AgendaButton } from './agenda-button';
 import { Component, computed, input } from '@angular/core';
 
@@ -27,7 +28,7 @@ const EXCLUSION_LABELS: Record<string, string> = {
  *  each with its source link (ACCESS-1). Nothing here ever says step-free: the server sends only "not published". */
 @Component({
   selector: 'app-where-next-cards',
-  imports: [AgendaButton, EventBadge, Icon],
+  imports: [AgendaButton, EventBadge, Icon, ReadAloudButton],
   template: `
     @if (response(); as r) {
       <section class="where-next-results" aria-labelledby="where-next-results-heading">
@@ -149,6 +150,11 @@ const EXCLUSION_LABELS: Record<string, string> = {
                       [sessionId]="candidate.sessionId"
                       [title]="candidate.title"
                     />
+                    <app-read-aloud-button
+                      [id]="'next-' + candidate.sessionId"
+                      [text]="speech(candidate)"
+                      [label]="candidate.title"
+                    />
                   </p>
                 </article>
               </li>
@@ -262,6 +268,30 @@ const EXCLUSION_LABELS: Record<string, string> = {
   `,
 })
 export class WhereNextCards {
+  /** What "Read aloud" says for a card: the talk, when and where, then why, then the access statements. */
+  protected speech(c: {
+    title: string;
+    event: string;
+    startsAtVenue: string;
+    room?: string | null;
+    level?: string | null;
+    reasons: { text: string }[];
+    access: { text: string; location?: string | null }[];
+  }): string {
+    const parts = [
+      c.title,
+      c.event,
+      c.startsAtVenue,
+      `Room: ${c.room ?? 'not listed in the schedule'}`,
+      c.level ? `Level: ${c.level}` : '',
+      c.reasons.length ? `Why this talk: ${c.reasons.map((r) => r.text).join(' ')}` : '',
+      c.access.length
+        ? `Access: ${c.access.map((a) => a.text + (a.location ? ` (${a.location})` : '')).join(' ')}`
+        : '',
+    ];
+    return parts.filter(Boolean).join('. ') + '.';
+  }
+
   readonly response = input<WhereNextResponse | null>(null);
 
   protected readonly windowLabel = computed(() => {

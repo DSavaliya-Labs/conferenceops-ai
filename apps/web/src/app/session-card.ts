@@ -1,7 +1,8 @@
-import { Component, input } from '@angular/core';
+import { Component, computed, input } from '@angular/core';
 
 import { AgendaButton } from './agenda-button';
 import { Icon } from './icons';
+import { ReadAloudButton, sessionSpeech } from './read-aloud';
 
 /** The event label every card carries: KubeCon is real and comes from the official schedule; CloudBridge Summit is
  *  the fictional demo event (PLAN §1.4). Text, not color alone. */
@@ -34,7 +35,7 @@ export interface SessionSummary {
  *  level and topics. The room comes from the schedule or says it isn't listed; nothing is guessed. */
 @Component({
   selector: 'app-session-card',
-  imports: [AgendaButton, EventBadge, Icon],
+  imports: [AgendaButton, EventBadge, Icon, ReadAloudButton],
   template: `
     <article class="card session" [attr.aria-labelledby]="'session-' + session().id">
       <div class="head">
@@ -69,6 +70,11 @@ export interface SessionSummary {
       }
       <p class="actions">
         <app-agenda-button [sessionId]="session().id" [title]="session().title" />
+        <app-read-aloud-button
+          [id]="'session-' + session().id"
+          [text]="speech()"
+          [label]="session().title"
+        />
       </p>
       <ng-content />
     </article>
@@ -135,4 +141,5 @@ export interface SessionSummary {
 })
 export class SessionCard {
   readonly session = input.required<SessionSummary>();
+  protected readonly speech = computed(() => sessionSpeech(this.session()));
 }
