@@ -1,13 +1,18 @@
 import asyncio
 import logging
+import threading
 
 import pytest
 
 from conferenceops.settings import Settings
 from conferenceops.worker import main as worker
-from conferenceops.worker.main import IMPORT_RETRY_SECONDS, Loop, every, loops
+from conferenceops.worker.main import IMPORT_RETRY_SECONDS, ITERATION_BUDGET_SECONDS, Loop, every, loops
 
 DATABASE_URL = "postgresql+psycopg://co@db:5432/conferenceops"
+
+
+def _no_beat(_name: str, _due_in: float) -> None:
+    """A heartbeat sink for tests about the schedule, which don't care about the beats."""
 
 
 def _work(*outcomes):
@@ -24,7 +29,7 @@ def _work(*outcomes):
     return work, calls
 
 
-def _pauses(monkeypatch, loop: Loop, count: int) -> list[float]:
+def _pauses(monkeypatch, loop: Loop, count: int, beat=_no_beat) -> list[float]:
     """Run `every` with the waits recorded instead of slept; stop after `count` waits."""
     pauses: list[float] = []
 
@@ -37,7 +42,7 @@ def _pauses(monkeypatch, loop: Loop, count: int) -> list[float]:
                 stop.set()
 
         monkeypatch.setattr(worker, "_pause", record)
-        await asyncio.wait_for(every(stop, loop), timeout=5)
+        await asyncio.wait_for(every(stop, loop, beat), timeout=5)
 
     asyncio.run(scenario())
     return pauses
@@ -70,7 +75,8 @@ def test_busy_work_runs_again_without_waiting(monkeypatch):
 def test_stop_ends_the_loop_promptly_even_during_a_long_wait(outcome):
     async def scenario():
         stop = asyncio.Event()
-        task = asyncio.create_task(every(stop, Loop("import", lambda: _raise_or_return(outcome), 3600, 3600, 3600)))
+        loop = Loop("import", lambda: _raise_or_return(outcome), 3600, 3600, 3600)
+        task = asyncio.create_task(every(stop, loop, _no_beat))
         await asyncio.sleep(0.05)
         stop.set()
         await asyncio.wait_for(task, timeout=1)
@@ -82,6 +88,46 @@ def _raise_or_return(outcome):
     if isinstance(outcome, Exception):
         raise outcome
     return outcome
+
+
+def test_the_loop_beats_before_its_first_iteration_and_after_every_one_promising_the_next(monkeypatch):
+    # Each beat says when the next one is due: the coming wait plus the budget for one iteration. A failed iteration
+    # beats too (it is retried, not hung), and a busy one promises the budget alone, because it runs again at once.
+    work, calls = _work(RuntimeError("elasticsearch not ready"), True, False)
+    loop = Loop("indexing", work, interval=2, retry=5, max_retry=60, budget=100)
+    beats: list[tuple[str, float]] = []
+
+    pauses = _pauses(monkeypatch, loop, count=2, beat=lambda name, due_in: beats.append((name, due_in)))
+
+    assert pauses == [5, 2]
+    assert beats == [("indexing", 100), ("indexing", 105), ("indexing", 100), ("indexing", 102)]
+
+
+def test_work_that_hangs_stops_the_beats():
+    # The point of the heartbeat: the loop that does the work beats, so a hung iteration goes quiet and the liveness
+    # probe fails. A separate task would keep beating while the work is stuck.
+    hung = threading.Event()
+    beats: list[tuple[str, float]] = []
+
+    async def scenario():
+        stop = asyncio.Event()
+        loop = Loop("import", lambda: hung.wait(timeout=5), 1800, 15, 1800, budget=100)
+        task = asyncio.create_task(every(stop, loop, lambda name, due_in: beats.append((name, due_in))))
+        await asyncio.sleep(0.3)
+        assert beats == [("import", 100)]  # the promise before the first iteration, and nothing since
+        stop.set()
+        hung.set()
+        await asyncio.wait_for(task, timeout=1)
+
+    asyncio.run(scenario())
+    assert beats == [("import", 100), ("import", 100)]  # the iteration beat once it returned
+
+
+def test_a_loop_has_a_five_minute_budget_by_default():
+    # Ten times the feed, Elasticsearch and OpenAI timeouts: a slow dependency makes a slow iteration, not a restart.
+    assert ITERATION_BUDGET_SECONDS == 300.0
+    cfg = Settings(database_url=DATABASE_URL, elasticsearch_url="http://es:9200", openai_api_key="test-key")
+    assert {loop.budget for loop in loops(cfg)} == {300.0}
 
 
 def test_the_import_runs_without_elasticsearch_or_openai(caplog):

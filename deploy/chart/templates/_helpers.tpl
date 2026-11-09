@@ -14,11 +14,25 @@ app.kubernetes.io/name: conferenceops
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/* An image reference from (list "<values path>" <its {repository, tag} values>). Both are required, and the tag is
+     never latest (K8S-1); the error names the value to set. */}}
+{{- define "co.imageRef" -}}
+{{- $path := index . 0 -}}
+{{- $image := index . 1 -}}
+{{- if not $image.repository -}}{{- fail (printf "%s.repository is required" $path) -}}{{- end -}}
+{{- if not $image.tag -}}{{- fail (printf "%s.tag is required (the commit SHA, never latest)" $path) -}}{{- end -}}
+{{- if eq (toString $image.tag) "latest" -}}{{- fail (printf "%s.tag must not be latest (K8S-1)" $path) -}}{{- end -}}
+{{ $image.repository }}:{{ $image.tag }}
+{{- end -}}
+
+{{/* The backend image: the APIs, the worker and the migrations Job. */}}
 {{- define "co.image" -}}
-{{- if not .Values.image.repository -}}{{- fail "image.repository is required" -}}{{- end -}}
-{{- if not .Values.image.tag -}}{{- fail "image.tag is required (the commit SHA, never latest)" -}}{{- end -}}
-{{- if eq .Values.image.tag "latest" -}}{{- fail "image.tag must not be latest (K8S-1)" -}}{{- end -}}
-{{ .Values.image.repository }}:{{ .Values.image.tag }}
+{{- include "co.imageRef" (list "image" .Values.image) -}}
+{{- end -}}
+
+{{/* The web image, built from apps/web. */}}
+{{- define "co.webImage" -}}
+{{- include "co.imageRef" (list "web.image" .Values.web.image) -}}
 {{- end -}}
 
 {{/* Container security settings shared by every workload we own (K8S-1). */}}

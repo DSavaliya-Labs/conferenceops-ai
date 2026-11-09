@@ -2,11 +2,13 @@
 
 import uvicorn
 
+from conferenceops.personas import router as personas_router
 from conferenceops.settings import settings
 from conferenceops.transcripts import router as transcripts_router
 from conferenceops.web import create_app
 
 app = create_app("core-api")
+app.include_router(personas_router)  # GET /api/v1/demo/profiles: the personas the switcher offers
 app.include_router(transcripts_router)  # GET /api/v1/sessions/{id}/replay, POST /api/v1/ops/transcripts/{id}/publish
 
 

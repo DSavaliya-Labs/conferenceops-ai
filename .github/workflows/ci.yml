@@ -160,20 +160,25 @@ jobs:
         run: |
           helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
           helm dependency build deploy/chart
-          args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci)
+          args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci
+            --set web.image.repository=example.azurecr.io/conferenceops-web --set web.image.tag=ci)
           helm lint deploy/chart "${args[@]}"
           helm template conferenceops deploy/chart "${args[@]}" \
             | kubeconform -strict -summary -ignore-missing-schemas
       - name: Discovery replicas outside the bounds must not render (OPS-1)
         run: |
           out=$(helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml --set image.repository=x \
-            --set image.tag=ci --set components.discovery.replicas=9 2>&1) && { echo "::error::rendered"; exit 1; }
+            --set image.tag=ci --set web.image.repository=x --set web.image.tag=ci \
+            --set components.discovery.replicas=9 2>&1) && { echo "::error::rendered"; exit 1; }
           grep -q 'outside 1..5 (OPS-1)' <<<"$out" || { echo "::error::failed for another reason: $out"; exit 1; }
-      - name: A latest image tag must not render (K8S-1)
+      - name: A latest image tag must not render, backend or web (K8S-1)
         run: |
-          if helm template conferenceops deploy/chart --set image.repository=x --set image.tag=latest >/dev/null 2>&1; then
-            echo "::error::image tag latest rendered"; exit 1
-          fi
+          images=(--set image.repository=x --set image.tag=ci --set web.image.repository=x --set web.image.tag=ci)
+          for tag in image.tag web.image.tag; do
+            out=$(helm template conferenceops deploy/chart "${images[@]}" --set "$tag=latest" 2>&1) \
+              && { echo "::error::$tag=latest rendered"; exit 1; }
+            grep -qF " $tag must not be latest (K8S-1)" <<<"$out" || { echo "::error::failed for another reason: $out"; exit 1; }
+          done
 
   incident-scope:
     name: incident-scope
@@ -211,7 +216,13 @@ jobs:
         run: docker build --tag "conferenceops-web:${GITHUB_SHA}" apps/web
       - name: The web image runs as non-root and serves the app and its config
         run: |
-          docker run --rm -d --name web -p 8081:8080 -e CORE_UPSTREAM=core.invalid:80 -e DISCOVERY_UPSTREAM=discovery.invalid:80 "conferenceops-web:${GITHUB_SHA}"
+          # As the chart runs it (K8S-1): user 101, no capabilities, and a read-only root filesystem where only the
+          # chart's emptyDir paths are writable: conf.d for the config the entrypoint renders, /tmp for the pid and temp
+          # files. An emptyDir is world-writable (0777); a plain --tmpfs can come up with the image directory's mode
+          # (0775, owned by root), which user 101 can't write. No --rm, so `docker logs` shows why nginx stopped.
+          docker run -d --name web -p 8081:8080 --user 101:101 --read-only \
+            --tmpfs /etc/nginx/conf.d:mode=0777 --tmpfs /tmp:mode=0777 --cap-drop ALL --security-opt no-new-privileges \
+            -e CORE_UPSTREAM=core.invalid:80 -e DISCOVERY_UPSTREAM=discovery.invalid:80 "conferenceops-web:${GITHUB_SHA}"
           for _ in $(seq 1 20); do curl -sf localhost:8081/health/ready && break; sleep 1; done
           curl -sf localhost:8081/health/ready || { docker logs web; exit 1; }
           curl -sf localhost:8081/ | grep -q "<app-root"

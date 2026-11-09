@@ -17,6 +17,9 @@ components:
   discovery:
     command: discovery-api
     replicas: 1
+    # Admission control (DISCOVERY_MAX_INFLIGHT, 1..40): requests in progress per pod before discovery answers 503
+    # DISCOVERY_CAPACITY_EXHAUSTED. Set it from measured capacity (ops/load/README.md), never in an incident PR (OPS-1).
+    maxInflight: 8
     resources:
       requests: {cpu: 250m, memory: 256Mi}
       limits: {memory: 512Mi}
@@ -32,11 +35,26 @@ discoveryBounds:
   minReplicas: 1
   maxReplicas: 5
 
+# The attendee web app, from apps/web: nginx (unprivileged, :8080) serves the Angular app and /config.json, and
+# proxies /api to core and discovery in the release namespace.
+web:
+  image:
+    repository: ""  # set by the deploy workflow: <registry>.azurecr.io/conferenceops-web
+    tag: ""         # the commit SHA; never `latest` (K8S-1)
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {memory: 128Mi}
+  # Browser monitoring (Dash0 Web SDK). The token is DASH0_BROWSER_TOKEN from secretName, ingest-only (SEC-1).
+  dash0:
+    endpoint: https://ingress.us-west-2.aws.dash0.com
+    dataset: conferenceops
+
 # The public entry point: an Azure LoadBalancer with a DNS name (<dnsLabel>.<region>.cloudapp.azure.com).
 public:
   enabled: false
   dnsLabel: ""
-  target: core  # the component that receives public traffic
+  target: web  # the component that receives public traffic: the web app, which proxies /api to the APIs
 
 postgres:
   image: postgres:17.6

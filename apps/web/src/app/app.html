@@ -3,6 +3,7 @@
 <header class="site-header">
   <p class="brand">ConferenceOps AI</p>
   <p class="event">KubeCon + CloudNativeCon North America 2026 · Salt Lake City</p>
+  <app-persona-switcher (changed)="onPersonaChanged()" />
 </header>
 
 <main id="main" tabindex="-1">
@@ -29,7 +30,39 @@
     }
   </form>
 
+  <form class="where-next" (submit)="askWhereNext($event)" novalidate>
+    <div class="where-next-row">
+      <label for="where-next-window">When</label>
+      <select id="where-next-window" name="window" (change)="onWindowChange($event)">
+        <option value="today" [selected]="window() === 'today'">Rest of today</option>
+        <option value="tomorrow_morning" [selected]="window() === 'tomorrow_morning'">Tomorrow morning</option>
+        <option value="any" [selected]="window() === 'any'">Any time</option>
+      </select>
+      <button
+        id="where-next-button"
+        type="submit"
+        [disabled]="whereNextStatus() === 'loading'"
+        aria-describedby="where-next-hint"
+      >
+        Where should I go next?
+      </button>
+    </div>
+    <p id="where-next-hint" class="hint">
+      Talks that haven't started, picked from the persona's interests and CloudBridge history, with only the access
+      facts the event publishes.
+    </p>
+    @if (whereNextValidation()) {
+      <p class="error" role="alert">{{ whereNextValidation() }}</p>
+    }
+  </form>
+
   <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
+
+  @if (whereNextStatus() === 'error') {
+    <p class="error" role="alert">Suggestions aren't available right now. Please try again in a moment.</p>
+  }
+
+  <app-where-next-cards [response]="whereNext()" />
 
   @if (status() === 'error') {
     <p class="error" role="alert">Search isn't available right now. Please try again in a moment.</p>

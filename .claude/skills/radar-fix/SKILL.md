@@ -41,8 +41,8 @@ scripts/radar-investigate.sh deploy/conferenceops-discovery -n conferenceops
 VERDICT=<the "Verdict saved" path it prints>   # under ${TMPDIR:-/tmp}; never copy it into the repository
 ```
 
-The chart names each workload `<release>-<component>` in namespace `conferenceops`: `conferenceops-core`,
-`conferenceops-discovery`, `conferenceops-worker`. Confirm the real name (Radar, or
+The chart names each workload `<release>-<component>` in namespace `conferenceops`: `conferenceops-web`,
+`conferenceops-core`, `conferenceops-discovery`, `conferenceops-worker`. Confirm the real name (Radar, or
 `kubectl get deploy -n conferenceops`) before you investigate. For a cluster-scoped resource, such as a node, leave
 out `-n`: `scripts/radar-investigate.sh node/<name>`.
 
@@ -88,7 +88,8 @@ change. When this skill was written they were:
 ```bash
 helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
 helm dependency build deploy/chart
-args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci)
+args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci
+  --set web.image.repository=example.azurecr.io/conferenceops-web --set web.image.tag=ci)
 helm lint deploy/chart "${args[@]}"
 helm template conferenceops deploy/chart "${args[@]}" | kubeconform -strict -summary -ignore-missing-schemas
 ```
