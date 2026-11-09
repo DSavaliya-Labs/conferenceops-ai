@@ -51,7 +51,7 @@
             }
           </video>
           <div class="controls">
-            <button type="button" (click)="togglePlayback()">
+            <button type="button" class="btn btn-primary" (click)="togglePlayback()">
               {{ playing() ? 'Pause' : 'Play' }}
             </button>
           </div>
@@ -65,7 +65,12 @@
           <h3 id="transcript-heading">Transcript</h3>
           @if (published()) {
             <div class="panel-controls">
-              <button type="button" [attr.aria-pressed]="following()" (click)="toggleFollowing()">
+              <button
+                type="button"
+                class="btn btn-outline"
+                [attr.aria-pressed]="following()"
+                (click)="toggleFollowing()"
+              >
                 {{ following() ? 'Pause updates' : 'Resume updates' }}
               </button>
               <p class="hint">

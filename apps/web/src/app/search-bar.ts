@@ -64,7 +64,7 @@ import { WhereNextService } from './where-next';
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: var(--space-1);
+      gap: var(--space-2);
       min-height: 3rem;
       padding: 0.25rem 0.25rem 0.25rem var(--space-3);
       border: 1.5px solid var(--line-strong);
