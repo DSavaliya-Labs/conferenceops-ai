@@ -2,20 +2,15 @@
 
 from fastapi import APIRouter, FastAPI
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.trace import Span, TracerProvider
 
 from conferenceops.settings import settings
 from conferenceops.telemetry import HEALTH_PATHS, setup_telemetry
 
 health = APIRouter(tags=["health"])
 
-
-def _strip_query(span, scope):
-    if span and span.is_recording():
-        path = scope.get("path", "")
-        span.set_attribute("http.target", path)
-        span.set_attribute("url.path", path)
-        span.set_attribute("http.url", path)
-        span.set_attribute("url.query", "")
+# Span attributes that can carry the request URL, query string included. PRIV-1: they keep the path only.
+URL_ATTRIBUTES = ("http.target", "http.url", "url.full", "url.path")
 
 
 @health.get("/health/live")
@@ -30,10 +25,25 @@ def ready() -> dict[str, str]:
     return {"status": "ready"}
 
 
+def strip_query(span: Span, scope: dict) -> None:
+    """Overwrite the URL attributes with the path, so a query string never reaches telemetry (PRIV-1)."""
+    if span and span.is_recording():
+        path = scope.get("path", "")
+        for name in URL_ATTRIBUTES:
+            span.set_attribute(name, path)
+        span.set_attribute("url.query", "")
+
+
+def instrument(app: FastAPI, tracer_provider: TracerProvider | None = None) -> None:
+    FastAPIInstrumentor.instrument_app(
+        app, excluded_urls=HEALTH_PATHS, server_request_hook=strip_query, tracer_provider=tracer_provider
+    )
+
+
 def create_app(service_name: str) -> FastAPI:
     cfg = settings()
     setup_telemetry(service_name, cfg)
     app = FastAPI(title=f"ConferenceOps AI {service_name}", version=cfg.service_version)
     app.include_router(health)
-    FastAPIInstrumentor.instrument_app(app, excluded_urls=HEALTH_PATHS, server_request_hook=_strip_query)
+    instrument(app)
     return app

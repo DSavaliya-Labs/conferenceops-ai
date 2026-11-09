@@ -5,7 +5,7 @@ from opentelemetry.sdk.trace import TracerProvider
 
 from conferenceops.settings import Settings
 from conferenceops.telemetry import JsonFormatter, resource
-from conferenceops.web import _strip_query
+from conferenceops.web import strip_query
 
 
 def _record(message: str) -> logging.LogRecord:
@@ -40,12 +40,13 @@ def test_server_request_hook_strips_query_strings_from_span_url_attributes():
             self.attributes[key] = value
 
     span = RecordingSpan()
-    _strip_query(span, {"path": "/search", "query_string": b"q=private attendee text"})
+    strip_query(span, {"path": "/search", "query_string": b"q=private attendee text"})
 
     assert span.attributes == {
         "http.target": "/search",
         "url.path": "/search",
         "http.url": "/search",
+        "url.full": "/search",
         "url.query": "",
     }
 
