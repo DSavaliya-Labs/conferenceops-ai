@@ -110,9 +110,13 @@ AGENDA = PersonaAgenda(
 )
 
 
+KNOWN_SESSION = uuid.uuid5(uuid.NAMESPACE_URL, "conferenceops/test/session/known")
+
+
 class FakeData:
     def __init__(self, fail: Exception | None = None):
         self.fail = fail
+        self.writes: list = []
 
     def _check(self):
         if self.fail:
@@ -133,6 +137,24 @@ class FakeData:
     def agenda(self, profile_id):
         self._check()
         return AGENDA if profile_id == AISHA_ID else None
+
+    def bookmark(self, profile_id, session_id):
+        self._check()
+        if profile_id != AISHA_ID:
+            return "no_profile"
+        if session_id != KNOWN_SESSION:
+            return "no_session"
+        self.writes.append(("add", profile_id, session_id))
+        return "done"
+
+    def unbookmark(self, profile_id, session_id):
+        self._check()
+        if profile_id != AISHA_ID:
+            return "no_profile"
+        if session_id != KNOWN_SESSION:
+            return "no_session"
+        self.writes.append(("remove", profile_id, session_id))
+        return "done"
 
 
 @pytest.fixture
@@ -291,7 +313,17 @@ def test_a_data_failure_is_503_and_the_log_carries_only_the_error_type(client, c
 
 def test_the_contract_lists_the_portal_routes_with_the_header_required_and_every_answer():
     paths = export_openapi.schema()["paths"]
-    assert {"/api/v1/conferences", "/api/v1/conferences/{slug}/access-facts", "/api/v1/me/agenda"} <= set(paths)
+    assert {
+        "/api/v1/conferences",
+        "/api/v1/conferences/{slug}/access-facts",
+        "/api/v1/me/agenda",
+        "/api/v1/me/agenda/{session_id}",
+    } <= set(paths)
+    for method in ("put", "delete"):
+        write = paths["/api/v1/me/agenda/{session_id}"][method]
+        headers = [p for p in write["parameters"] if p["in"] == "header"]
+        assert [(h["name"], h["required"]) for h in headers] == [("X-Demo-Profile-ID", True)]
+        assert {"204", "400", "404", "422", "503"} == set(write["responses"])
     # A client generated from the contract must send the header, and knows the 400, 404 and 503 it can get (API-1).
     agenda = paths["/api/v1/me/agenda"]["get"]
     [header] = agenda["parameters"]
@@ -300,3 +332,40 @@ def test_the_contract_lists_the_portal_routes_with_the_header_required_and_every
     assert {"200", "400", "404", "422", "503"} == set(agenda["responses"])
     assert {"200", "503"} == set(paths["/api/v1/conferences"]["get"]["responses"])
     assert {"200", "404", "422", "503"} == set(paths["/api/v1/conferences/{slug}/access-facts"]["get"]["responses"])
+
+
+# --- Bookmarks ---------------------------------------------------------------------------------------------------
+
+
+def test_a_bookmark_is_added_and_removed_for_the_persona_in_the_header_and_nothing_else(client):
+    http, state = client
+    assert http.put(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=AS_AISHA).status_code == 204
+    assert http.delete(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=AS_AISHA).status_code == 204
+    assert state["data"].writes == [("add", AISHA_ID, KNOWN_SESSION), ("remove", AISHA_ID, KNOWN_SESSION)]
+
+
+def test_an_unknown_session_or_an_unknown_persona_is_404_with_one_body_for_both(client):
+    http, state = client
+    other = {"X-Demo-Profile-ID": str(uuid.uuid4())}
+    unknown_session = http.put(f"/api/v1/me/agenda/{uuid.uuid4()}", headers=AS_AISHA)
+    unknown_persona = http.put(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=other)
+    assert unknown_session.status_code == unknown_persona.status_code == 404
+    # AUTHZ-1: the body never says which of the two IDs exists.
+    assert unknown_session.json() == unknown_persona.json()
+    assert http.delete(f"/api/v1/me/agenda/{uuid.uuid4()}", headers=AS_AISHA).status_code == 404
+    assert http.delete(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=other).json() == unknown_session.json()
+    assert state["data"].writes == []
+
+
+@pytest.mark.parametrize("method", ["put", "delete"])
+def test_a_bookmark_write_needs_the_persona_header(client, method):
+    http, _ = client
+    assert getattr(http, method)(f"/api/v1/me/agenda/{KNOWN_SESSION}").status_code == 400
+    assert getattr(http, method)("/api/v1/me/agenda/not-a-uuid", headers=AS_AISHA).status_code == 422
+
+
+def test_a_bookmark_write_failure_is_503_without_details(client, caplog):
+    http, state = client
+    state["data"] = FakeData(fail=RuntimeError("secret-dsn"))
+    assert http.put(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=AS_AISHA).status_code == 503
+    assert "secret-dsn" not in caplog.text

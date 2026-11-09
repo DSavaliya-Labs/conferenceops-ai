@@ -1,3 +1,5 @@
+import { PersonaService } from './personas';
+import { TestBed } from '@angular/core/testing';
 import { NAV_LINKS } from './app';
 import { scrubUrlAttributes } from './telemetry';
 import {
@@ -5,6 +7,7 @@ import {
   View,
   choosePersona,
   click,
+  flushAgenda,
   key,
   loadPersonas,
   navigate,
@@ -300,6 +303,8 @@ describe('The Ask bar', () => {
 
   it('“Where next?” without a persona opens the page and asks for one instead of sending a request', async () => {
     const view = await start();
+    TestBed.inject(PersonaService).selectedId.set('');
+    await settle(view);
     click(view.el.querySelector('form[role="search"] .btn-accent'));
     await settle(view);
     expect(view.router.url).toBe('/where-next');

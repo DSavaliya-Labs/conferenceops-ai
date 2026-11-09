@@ -1,9 +1,12 @@
+import { PersonaService } from './personas';
+import { TestBed } from '@angular/core/testing';
 import { WhereNextResponse } from './where-next';
 import {
   AISHA,
   View,
   choosePersona,
   click,
+  flushAgenda,
   loadPersonas,
   navigate,
   renderApp,
@@ -91,6 +94,8 @@ async function askWhereNext(view: AppView): Promise<void> {
 describe('Where should I go next?', () => {
   it('has the page, the When control and the button; it asks for a persona first instead of sending a request', async () => {
     const view = await start();
+    TestBed.inject(PersonaService).selectedId.set(''); // no persona at all, which a first visit no longer is
+    await settle(view);
     expect(text(view.el.querySelector('h1'))).toBe('Where should I go next?');
     expect(view.el.querySelector('label[for="where-next-window"]')).not.toBeNull();
     expect(text(view.el.querySelector('#where-next-hint'))).toContain('Choose a demo persona');
@@ -203,6 +208,7 @@ describe('Where should I go next?', () => {
     view.http.expectOne('/api/v1/recommendations/next').flush(answer());
     await settle(view);
     // Aisha's answer is on screen, with her access-need notice, and nothing is in flight.
+    flushAgenda(view);
     view.http.verify();
     expect(view.el.querySelectorAll('app-where-next-cards .card').length).toBe(1);
     expect(text(view.el.querySelector('app-where-next-cards'))).toContain(STEP_FREE);

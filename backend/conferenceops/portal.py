@@ -14,12 +14,13 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Annotated, Protocol
+from typing import Annotated, Literal, Protocol
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Path
 from pydantic import Field
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from conferenceops.db import transaction
 from conferenceops.models import AccessFact, AgendaItem, Attendance, Conference, Profile, Room, Session, Speaker
@@ -90,12 +91,21 @@ class PersonaAgenda:
     attended: tuple[AgendaSession, ...]
 
 
+# A bookmark write: done (idempotent), or who was missing. AUTHZ-1: an unknown persona and an unknown session both
+# answer 404, so the response never says which of the two exists.
+BookmarkResult = Literal["done", "no_profile", "no_session"]
+
+
 class PortalData(Protocol):
     def events(self) -> list[EventRow]: ...
 
     def access_facts(self, slug: str) -> EventFacts | None: ...
 
     def agenda(self, profile_id: uuid.UUID) -> PersonaAgenda | None: ...
+
+    def bookmark(self, profile_id: uuid.UUID, session_id: uuid.UUID) -> BookmarkResult: ...
+
+    def unbookmark(self, profile_id: uuid.UUID, session_id: uuid.UUID) -> BookmarkResult: ...
 
 
 # --- The API models (camelCase on the wire) ----------------------------------------------------------------------
@@ -301,6 +311,37 @@ class PostgresPortalData:
                 attended=sessions_of(Attendance),
             )
 
+    def _selectable(self, db, profile_id: uuid.UUID) -> bool:
+        found = db.scalars(select(Profile.id).where(Profile.id == profile_id, Profile.demo_selectable.is_(True)))
+        return found.first() is not None
+
+    def bookmark(self, profile_id: uuid.UUID, session_id: uuid.UUID) -> BookmarkResult:
+        """Adds the session to the persona's agenda. A bookmark is intent only: it never reserves a seat."""
+        with transaction() as db:
+            if not self._selectable(db, profile_id):
+                return "no_profile"
+            if db.scalars(select(Session.id).where(Session.id == session_id)).first() is None:
+                return "no_session"
+            db.execute(
+                pg_insert(AgendaItem)
+                .values(profile_id=profile_id, session_id=session_id)
+                .on_conflict_do_nothing(index_elements=["profile_id", "session_id"])
+            )
+            return "done"
+
+    def unbookmark(self, profile_id: uuid.UUID, session_id: uuid.UUID) -> BookmarkResult:
+        """Removes the session from the persona's agenda; removing a bookmark that isn't there is still done, but an
+        unknown talk is 404 like it is for a bookmark."""
+        with transaction() as db:
+            if not self._selectable(db, profile_id):
+                return "no_profile"
+            if db.scalars(select(Session.id).where(Session.id == session_id)).first() is None:
+                return "no_session"
+            db.execute(
+                delete(AgendaItem).where(AgendaItem.profile_id == profile_id, AgendaItem.session_id == session_id)
+            )
+            return "done"
+
 
 def get_portal_data() -> PortalData:
     return PostgresPortalData()
@@ -385,3 +426,55 @@ def my_agenda(profile_id: Annotated[uuid.UUID, Depends(demo_profile_id)], data: 
         bookmarked=[agenda_entry(row) for row in found.bookmarked],
         attended=[agenda_entry(row) for row in found.attended],
     )
+
+
+_BOOKMARK_RESPONSES = {
+    **DEMO_PROFILE_RESPONSES,
+    404: {"model": ErrorDetail, "description": "Profile or session not found"},
+    503: {"model": ErrorDetail, "description": "The agenda isn't available right now"},
+}
+
+
+def _bookmark_outcome(result: BookmarkResult) -> None:
+    if result != "done":
+        # AUTHZ-1: one body for both cases, so the answer never says whether the persona or the talk was missing.
+        raise HTTPException(status_code=404, detail="Not found")
+
+
+@router.put(
+    "/api/v1/me/agenda/{session_id}",
+    status_code=204,
+    openapi_extra=DEMO_PROFILE_OPENAPI,
+    responses=_BOOKMARK_RESPONSES,
+)
+def add_to_agenda(
+    profile_id: Annotated[uuid.UUID, Depends(demo_profile_id)],
+    session_id: Annotated[uuid.UUID, Path(description="The session to bookmark")],
+    data: Data,
+) -> None:
+    """Bookmarks a talk for the persona in X-Demo-Profile-ID (AUTHZ-1). Idempotent: bookmarking twice is one
+    bookmark. A bookmark is a personal plan; it never reserves a seat."""
+    try:
+        result = data.bookmark(profile_id, session_id)
+    except Exception as exc:
+        raise _unavailable("agenda", exc) from exc
+    _bookmark_outcome(result)
+
+
+@router.delete(
+    "/api/v1/me/agenda/{session_id}",
+    status_code=204,
+    openapi_extra=DEMO_PROFILE_OPENAPI,
+    responses=_BOOKMARK_RESPONSES,
+)
+def remove_from_agenda(
+    profile_id: Annotated[uuid.UUID, Depends(demo_profile_id)],
+    session_id: Annotated[uuid.UUID, Path(description="The session to remove from the agenda")],
+    data: Data,
+) -> None:
+    """Removes a bookmark for the persona in X-Demo-Profile-ID (AUTHZ-1). Idempotent."""
+    try:
+        result = data.unbookmark(profile_id, session_id)
+    except Exception as exc:
+        raise _unavailable("agenda", exc) from exc
+    _bookmark_outcome(result)
