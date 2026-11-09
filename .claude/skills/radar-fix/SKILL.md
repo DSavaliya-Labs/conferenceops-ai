@@ -42,22 +42,25 @@ VERDICT=<the "Verdict saved" path it prints>   # under ${TMPDIR:-/tmp}; never co
 ```
 
 The chart names each workload `<release>-<component>` in namespace `conferenceops`: `conferenceops-core`,
-`conferenceops-discovery`, `conferenceops-worker`. Confirm the real name (Radar, or `kubectl get deploy -n
-conferenceops`) before you investigate.
+`conferenceops-discovery`, `conferenceops-worker`. Confirm the real name (Radar, or
+`kubectl get deploy -n conferenceops`) before you investigate. For a cluster-scoped resource, such as a node, leave
+out `-n`: `scripts/radar-investigate.sh node/<name>`.
 
 ## 2. Read it
 
 ```bash
-jq '.diagnosis | {healthy, inconclusive, certainty, confidence, summary, rootCause}' "$VERDICT"
-jq -r '.diagnosis.steps[]? | "\(.kind): \(.text) (precondition: \(.precondition))"' "$VERDICT"
-jq -r '.diagnosis | "recommended: \(.recommendedIndex)", ((.remediation // [])[])' "$VERDICT"
-jq '.diagnosis.evidence[]? | {role, claim, subject: "\(.subject.kind)/\(.subject.name)"}' "$VERDICT"
-jq -r '.diagnosis.report' "$VERDICT"
+scripts/radar-investigate.sh --show "$VERDICT"
 ```
 
-Read `rootCause` and `summary` first. Then the `steps` (the `mitigate` ones are fix candidates; `verify` and
-`investigate` are checks), or `remediation[recommendedIndex - 1]` (the index is 1-based), or the `report`. On a
-healthy verdict `steps` and `remediation` are null and any advice is only in the `report`.
+It prints the whole verdict: the summary, the root cause, the recommended step with its precondition, the steps,
+the remediation, the evidence, the ruled-out hypotheses and the report. It drops control characters, because Radar's
+text can carry terminal escape sequences. Read a verdict this way, never with `jq -r` or `cat`.
+
+Read the root cause and the summary first. Then the steps (the `mitigate` ones are fix candidates; `verify` and
+`investigate` are checks), or the recommended step, or the report. The recommended step is
+`remediation[recommendedIndex - 1]` (the index is 1-based). When `steps` and `remediation` have the same length they
+are parallel lists: the matching step's precondition applies too, and Radar recommends only a `mitigate` step. On a
+healthy verdict `steps` and `remediation` are null and any advice is only in the report.
 
 | Verdict | What to do |
 |---|---|
@@ -107,9 +110,9 @@ output of each command for the PR description.
 ## 6. Open the pull request
 
 1. Branch from `main`: `git switch -c fix/radar-<short-name> origin/main`, and commit with a plain message.
-2. Render Radar's part of the description. It quotes Radar's text with HTML, links and mentions neutralized, so a
-   verdict can't ping anyone or give Gitar a command from your account; never paste raw verdict text into a PR,
-   a comment or a commit:
+2. Render Radar's part of the description. It quotes Radar's text with HTML, links, mentions and issue references
+   neutralized, so a verdict can't ping anyone, reference or close an issue, or give Gitar a command from your
+   account; never paste raw verdict text into a PR, a comment or a commit:
    `scripts/radar-investigate.sh --markdown "$VERDICT" >"${TMPDIR:-/tmp}/radar-section.md"`
 3. Write the description with these sections:
    - `## Why`: the finding in one or two sentences, with the run id.
@@ -130,5 +133,7 @@ The merge deploys through `.github/workflows/deploy.yml`. Wait for that run to s
 scripts/radar-investigate.sh --verify <pr-number> deploy/conferenceops-discovery -n conferenceops
 ```
 
-It posts the new verdict's summary, run id and link on the PR. Only a `healthy` verdict closes the loop. Otherwise
-say so on the PR and go back to step 2. Never claim a recovery without that evidence.
+It posts the new verdict's summary, run id and link on the PR. The comment says "after deploy" only when the newest
+successful `deploy.yml` run on main includes the PR's merge commit, and names that run. Otherwise its title says the
+deploy isn't confirmed. Only a `healthy` verdict after a confirmed deploy closes the loop. Otherwise say so on the PR
+and go back to step 2. Never claim a recovery without that evidence.
