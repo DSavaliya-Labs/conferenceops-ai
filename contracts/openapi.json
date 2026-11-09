@@ -170,6 +170,21 @@
         "title": "Candidate",
         "type": "object"
       },
+      "ErrorDetail": {
+        "description": "The body of an error answer (FastAPI's HTTPException).",
+        "properties": {
+          "detail": {
+            "description": "What went wrong, in words",
+            "title": "Detail",
+            "type": "string"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -419,7 +434,7 @@
             "additionalProperties": {
               "type": "integer"
             },
-            "description": "How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.",
+            "description": "How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, NOT_OPEN (held off-site, sold out, or needing a separate registration), ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.",
             "title": "Excluded",
             "type": "object"
           },
@@ -678,6 +693,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Personas aren't available right now"
           }
         },
         "summary": "List Demo Profiles",
@@ -692,19 +717,13 @@
         "operationId": "where_next_api_v1_recommendations_next_post",
         "parameters": [
           {
+            "description": "The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1).",
             "in": "header",
             "name": "X-Demo-Profile-ID",
-            "required": false,
+            "required": true,
             "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Demo-Profile-Id"
+              "format": "uuid",
+              "type": "string"
             }
           }
         ],
@@ -729,6 +748,26 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No persona chosen: X-Demo-Profile-ID is missing or empty"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No selectable persona has that ID"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -738,6 +777,16 @@
               }
             },
             "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Suggestions aren't available right now: the event's schedule isn't imported, search isn't configured, or retrieval failed"
           }
         },
         "summary": "Where Next",

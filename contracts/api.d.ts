@@ -183,6 +183,17 @@ export interface components {
             /** Title */
             title: string;
         };
+        /**
+         * ErrorDetail
+         * @description The body of an error answer (FastAPI's HTTPException).
+         */
+        ErrorDetail: {
+            /**
+             * Detail
+             * @description What went wrong, in words
+             */
+            detail: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -294,7 +305,7 @@ export interface components {
             conferenceTimeVenue: string;
             /**
              * Excluded
-             * @description How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.
+             * @description How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, NOT_OPEN (held off-site, sold out, or needing a separate registration), ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.
              */
             excluded: {
                 [key: string]: number;
@@ -423,13 +434,23 @@ export interface operations {
                     "application/json": components["schemas"]["PersonaList"];
                 };
             };
+            /** @description Personas aren't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
         };
     };
     where_next_api_v1_recommendations_next_post: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Demo-Profile-ID"?: string | null;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
             };
             path?: never;
             cookie?: never;
@@ -449,6 +470,24 @@ export interface operations {
                     "application/json": components["schemas"]["RecommendationResponse"];
                 };
             };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No selectable persona has that ID */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -456,6 +495,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Suggestions aren't available right now: the event's schedule isn't imported, search isn't configured, or retrieval failed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };

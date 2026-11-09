@@ -228,7 +228,7 @@ describe('Where should I go next?', () => {
           status: 'no_fit',
           candidates: [],
           warnings: [],
-          excluded: { AGENDA_CONFLICT: 1, NO_MATCH: 4 },
+          excluded: { NOT_OPEN: 2, AGENDA_CONFLICT: 1, NO_MATCH: 4 },
         }),
       );
     await settle(view.fixture);
@@ -240,6 +240,7 @@ describe('Where should I go next?', () => {
       li.textContent?.trim(),
     );
     expect(items).toEqual([
+      "2 talks can't simply be walked into (off-site, sold out, or separate registration required)",
       '1 talk overlap a talk on your agenda',
       "4 talks don't match your interests or history",
     ]);
@@ -262,6 +263,31 @@ describe('Where should I go next?', () => {
     await choose(view, 'p-tomas');
     expect(inFlight.cancelled).toBe(true);
     expect(view.el.querySelectorAll('.card').length).toBe(0);
+  });
+
+  it('switching persona after an answer clears her cards, notices and status line (PLAN §4.1)', async () => {
+    const view = render();
+    await loadPersonas(view);
+    await choose(view, 'p-aisha');
+    await askWhereNext(view);
+    view.http.expectOne('/api/v1/recommendations/next').flush(answer());
+    await settle(view.fixture);
+    // Aisha's answer is on screen, with her access-need notice, and nothing is in flight.
+    view.http.verify();
+    expect(view.el.querySelectorAll('.card').length).toBe(1);
+    expect(view.el.querySelector('app-where-next-cards')?.textContent).toContain(STEP_FREE);
+    expect(view.el.querySelector('[role="status"]')?.textContent).toContain(
+      '1 suggestion for Aisha Rahman.',
+    );
+
+    await choose(view, 'p-tomas');
+    expect(view.el.querySelectorAll('.card').length).toBe(0);
+    expect(view.el.querySelector('app-where-next-cards')?.textContent?.trim()).toBe('');
+    expect(view.el.querySelector('[role="status"]')?.textContent?.trim()).toBe('');
+    const button = view.el.querySelector<HTMLButtonElement>('#where-next-button')!;
+    expect(button.textContent?.trim()).toBe('Where should I go next?');
+    expect(button.disabled).toBe(false);
+    view.http.expectNone('/api/v1/recommendations/next');
   });
 
   it('shows a friendly message when suggestions are down', async () => {
