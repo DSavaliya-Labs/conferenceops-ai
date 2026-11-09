@@ -42,7 +42,7 @@ and shows a platform run by an AI operations team.
 | `seed/` | The CloudBridge Summit fixture and its media and caption files |
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
-| `ops/load/` | k6 load tests |
+| `ops/load/` | k6 search load test, summary logic and unit tests |
 | `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean) |
 | `.github/workflows/` | CI (`ci.yml`), deploy, Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |

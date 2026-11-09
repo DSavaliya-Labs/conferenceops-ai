@@ -34,6 +34,13 @@ jobs:
         run: |
           mapfile -t scripts < <(git ls-files '*.sh')
           if ((${#scripts[@]})); then shellcheck "${scripts[@]}"; else echo "No shell scripts."; fi
+      - name: Test load-run helpers
+        run: bash scripts/load-run.test.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Test load summary
+        run: node --test ops/load/search-summary.test.js
 
   domain-tests:
     name: domain-tests

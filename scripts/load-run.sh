@@ -218,6 +218,7 @@ main() {
   fi
 
   kc create configmap "$configmap" --from-file=search-peak.js="$LOAD_DIR/search-peak.js" \
+    --from-file=search-summary.js="$LOAD_DIR/search-summary.js" \
     --from-file=queries.json="$LOAD_DIR/queries.json" --dry-run=client -o yaml | kc apply -f - || return 1
   kc delete job "$JOB" --ignore-not-found --cascade=foreground --wait=true --timeout=3m || return 1
   kc apply -f - <<<"$manifest" || return 1
@@ -239,4 +240,4 @@ main() {
   finish "$state" "$code"
 }
 
-main "$@"; exit
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; exit; fi
