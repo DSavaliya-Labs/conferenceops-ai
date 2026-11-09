@@ -43,8 +43,8 @@ and shows a platform run by an AI operations team.
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
 | `ops/load/` | k6 load tests |
-| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean) |
-| `.github/workflows/` | CI (`ci.yml`), deploy, Build log |
+| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh` |
+| `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
 
 When you add a module, a route or a top-level directory, add it here in the same pull request.
@@ -110,7 +110,12 @@ DATABASE_URL=postgresql+psycopg://... uv run alembic upgrade head   # apply migr
 DATABASE_URL=... uv run pytest -q -m integration                     # integration tests (real PostgreSQL)
 uv run core-api                               # or discovery-api, worker; listens on :8080
 docker build -t conferenceops-backend backend # one image; the Deployment picks the command
+helm dependency build deploy/chart && helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml \
+  --set image.repository=x --set image.tag=y   # render the chart as CI does
 ```
+
+The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com. Every merge to `main` deploys there
+(`deploy.yml`), and each deploy is marked in Dash0 as a `dash0.deployment` event.
 
 ## Never
 

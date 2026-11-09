@@ -1,0 +1,14 @@
+# Values deployed to AKS. Incident pull requests may change only the discovery replicas or resources (OPS-1).
+
+environment: aks
+
+public:
+  enabled: true
+  dnsLabel: conferenceops-ai
+
+components:
+  discovery:
+    replicas: 1
+    resources:
+      requests: {cpu: 250m, memory: 256Mi}
+      limits: {memory: 512Mi}

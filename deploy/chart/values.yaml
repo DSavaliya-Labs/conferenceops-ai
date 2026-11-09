@@ -1,0 +1,95 @@
+# Defaults for every environment. deploy/env/aks/values.yaml overrides them for AKS.
+
+image:
+  repository: ""  # set by the deploy workflow: <registry>.azurecr.io/conferenceops-backend
+  tag: ""         # the commit SHA; never `latest` (K8S-1)
+
+environment: local
+
+# One Deployment per process, from the same image.
+components:
+  core:
+    command: core-api
+    replicas: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 512Mi}
+  discovery:
+    command: discovery-api
+    replicas: 1
+    resources:
+      requests: {cpu: 250m, memory: 256Mi}
+      limits: {memory: 512Mi}
+  worker:
+    command: worker
+    replicas: 1
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {memory: 768Mi}
+
+# Incident fixes (OPS-1) may change discovery replicas only within these bounds; rendering fails outside them.
+discoveryBounds:
+  minReplicas: 1
+  maxReplicas: 5
+
+# The public entry point: an Azure LoadBalancer with a DNS name (<dnsLabel>.<region>.cloudapp.azure.com).
+public:
+  enabled: false
+  dnsLabel: ""
+  target: core  # the component that receives public traffic
+
+postgres:
+  image: postgres:17
+  storage: 5Gi
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+elasticsearch:
+  version: 9.5.5
+  storage: 10Gi
+  heap: 1g
+  resources:
+    requests: {cpu: 500m, memory: 2Gi}
+    limits: {memory: 3Gi}
+
+# Secrets created outside the chart (by the deploy workflow): OPENAI_API_KEY, DASH0_INGEST_TOKEN, DASH0_BROWSER_TOKEN.
+secretName: conferenceops-secrets
+dbSecretName: conferenceops-db
+
+# The OpenTelemetry Collector (subchart). It receives OTLP from the services and adds Kubernetes metadata, cluster
+# metrics and Kubernetes events, then exports everything to Dash0's `conferenceops` dataset.
+collector:
+  fullnameOverride: conferenceops-collector
+  mode: deployment
+  image:
+    repository: otel/opentelemetry-collector-contrib
+  presets:
+    kubernetesAttributes: {enabled: true}
+    clusterMetrics: {enabled: true}
+    kubernetesEvents: {enabled: true}
+  extraEnvs:
+    - name: DASH0_AUTH_TOKEN
+      valueFrom:
+        secretKeyRef: {name: conferenceops-secrets, key: DASH0_INGEST_TOKEN}
+  config:
+    exporters:
+      otlphttp/dash0:
+        endpoint: https://ingress.us-west-2.aws.dash0.com
+        headers:
+          Authorization: "Bearer ${env:DASH0_AUTH_TOKEN}"
+          Dash0-Dataset: conferenceops
+    service:
+      pipelines:
+        traces: {exporters: [otlphttp/dash0]}
+        metrics: {exporters: [otlphttp/dash0]}
+        logs: {exporters: [otlphttp/dash0]}
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities: {drop: [ALL]}
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {memory: 256Mi}

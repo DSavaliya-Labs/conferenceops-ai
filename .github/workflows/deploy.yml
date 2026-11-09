@@ -1,0 +1,114 @@
+name: deploy
+
+# Every merge to main: build the image, deploy the chart to AKS, check the public URL, and mark the deploy in Dash0.
+# Azure sign-in is OIDC (scripts/azure-setup.sh): the identity trusts only this repository's `aks` environment, and
+# only `main` can deploy to it, so no Azure secret exists to leak or rotate.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+# One deploy at a time: a newer merge waits instead of cancelling a rollout halfway.
+concurrency:
+  group: deploy-aks
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: conferenceops
+  RELEASE: conferenceops
+  PUBLIC_URL: http://conferenceops-ai.westus3.cloudapp.azure.com
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment:
+      name: aks
+      url: ${{ env.PUBLIC_URL }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/conferenceops-backend
+      TAG: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Sign in to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push the backend image
+        run: |
+          az acr login --name "${{ vars.ACR_NAME }}"
+          docker build --tag "$IMAGE:$TAG" backend
+          docker push "$IMAGE:$TAG"
+
+      - name: Cluster credentials (Entra ID through kubelogin)
+        run: |
+          az aks install-cli --install-location "$HOME/bin/kubectl" --kubelogin-install-location "$HOME/bin/kubelogin"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          az aks get-credentials --resource-group "${{ vars.AKS_RESOURCE_GROUP }}" --name "${{ vars.AKS_NAME }}" \
+            --subscription "${{ vars.AZURE_SUBSCRIPTION_ID }}" --overwrite-existing
+          "$HOME/bin/kubelogin" convert-kubeconfig -l azurecli
+
+      - name: Platform (ECK operator, namespace)
+        run: ./scripts/platform-up.sh
+
+      - name: Secrets (created from the environment's secrets, never printed)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DASH0_INGEST_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
+          DASH0_BROWSER_TOKEN: ${{ secrets.DASH0_BROWSER_TOKEN }}
+        run: |
+          kubectl -n "$NAMESPACE" create secret generic conferenceops-secrets \
+            --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
+            --from-literal=DASH0_INGEST_TOKEN="$DASH0_INGEST_TOKEN" \
+            --from-literal=DASH0_BROWSER_TOKEN="$DASH0_BROWSER_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+          if ! kubectl -n "$NAMESPACE" get secret conferenceops-db >/dev/null 2>&1; then
+            kubectl -n "$NAMESPACE" create secret generic conferenceops-db \
+              --from-literal=password="$(openssl rand -hex 24)" >/dev/null
+          fi
+
+      - name: Deploy the chart
+        run: |
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
+          helm dependency build deploy/chart
+          helm upgrade --install "$RELEASE" deploy/chart --namespace "$NAMESPACE" --reset-values \
+            -f deploy/env/aks/values.yaml --set image.repository="$IMAGE" --set image.tag="$TAG" \
+            --wait --timeout 20m
+
+      - name: The public URL answers
+        run: |
+          for _ in $(seq 1 60); do curl -sf "$PUBLIC_URL/health/ready" >/dev/null && break; sleep 5; done
+          curl -sf "$PUBLIC_URL/health/ready"
+
+      - name: Install the Dash0 CLI
+        uses: dash0hq/dash0-cli/.github/actions/setup@v1.1.0
+
+      - name: Mark the deploy in Dash0
+        env:
+          DASH0_OTLP_URL: https://ingress.us-west-2.aws.dash0.com
+          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
+          DASH0_DATASET: conferenceops
+        run: |
+          for service in core-api discovery-api worker; do
+            dash0 logs send "Deployed $TAG" --event-name dash0.deployment --severity-number 9 \
+              --resource-attribute "service.name=$service" \
+              --resource-attribute "service.namespace=conferenceops" \
+              --resource-attribute "service.version=$TAG" \
+              --resource-attribute "deployment.environment.name=aks" \
+              --log-attribute "deployment.status=succeeded" \
+              --log-attribute "vcs.repository.url.full=${{ github.server_url }}/${{ github.repository }}" \
+              --log-attribute "vcs.ref.head.revision=$TAG"
+          done

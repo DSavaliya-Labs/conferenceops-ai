@@ -115,7 +115,34 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - run: echo "::notice title=Not applicable yet::No Helm chart yet. The deploy PR makes this check real."
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install kubeconform
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C "$HOME/bin" kubeconform
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Lint, render and validate the chart with the AKS values
+        run: |
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
+          helm dependency build deploy/chart
+          args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci)
+          helm lint deploy/chart "${args[@]}"
+          helm template conferenceops deploy/chart "${args[@]}" \
+            | kubeconform -strict -summary -ignore-missing-schemas
+      - name: Discovery replicas outside the bounds must not render (OPS-1)
+        run: |
+          if helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml --set image.repository=x \
+               --set image.tag=ci --set components.discovery.replicas=9 >/dev/null 2>&1; then
+            echo "::error::a discovery replica count outside the bounds rendered"; exit 1
+          fi
+      - name: A latest image tag must not render (K8S-1)
+        run: |
+          if helm template conferenceops deploy/chart --set image.repository=x --set image.tag=latest >/dev/null 2>&1; then
+            echo "::error::image tag latest rendered"; exit 1
+          fi
 
   incident-scope:
     name: incident-scope

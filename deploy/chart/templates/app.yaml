@@ -1,0 +1,94 @@
+{{- $bounds := .Values.discoveryBounds }}
+{{- $discovery := int .Values.components.discovery.replicas }}
+{{- if or (lt $discovery (int $bounds.minReplicas)) (gt $discovery (int $bounds.maxReplicas)) }}
+{{- fail (printf "components.discovery.replicas=%d is outside %d..%d (OPS-1)" $discovery (int $bounds.minReplicas) (int $bounds.maxReplicas)) }}
+{{- end }}
+{{- range $name, $c := .Values.components }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "co.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "co.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  replicas: {{ $c.replicas }}
+  {{- if eq $name "worker" }}
+  strategy:
+    type: Recreate  # never two workers at once, even during a rollout
+  {{- else }}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "co.selector" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $name }}
+  template:
+    metadata:
+      labels:
+        {{- include "co.selector" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $name }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      {{- if ne $name "worker" }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: {{ $name }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "co.image" $ }}
+          command: [{{ $c.command | quote }}]
+          env:
+            {{- include "co.env" $ | nindent 12 }}
+          {{- if ne $name "worker" }}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              sleep: {seconds: 10}  # keep serving while the endpoint is removed, so rollouts don't 503
+          {{- end }}
+          securityContext:
+            {{- include "co.containerSecurity" $ | nindent 12 }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+{{- if ne $name "worker" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "co.fullname" $ }}-{{ $name }}
+  labels:
+    {{- include "co.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  selector:
+    {{- include "co.selector" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+{{- end }}
+{{- end }}
