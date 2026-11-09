@@ -44,10 +44,11 @@ function setUp(bookmarked: string[] = []) {
   });
   fixture.detectChanges();
   const button = () => fixture.nativeElement.querySelector('button') as HTMLButtonElement;
-  const otherButton = () =>
-    fixture.nativeElement.querySelectorAll('button')[1] as HTMLButtonElement;
+  const buttons = () =>
+    fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>;
+  const otherButton = () => buttons()[1];
   const status = () => fixture.nativeElement.querySelector('[role="status"]') as HTMLElement;
-  return { fixture, http, button, otherButton, status, agenda: TestBed.inject(AgendaService) };
+  return { fixture, http, button, otherButton, buttons, status, agenda: TestBed.inject(AgendaService) };
 }
 
 describe('Quick add to My Agenda', () => {
@@ -198,4 +199,39 @@ describe('Quick add to My Agenda', () => {
     expect(button().disabled).toBe(true);
     expect(agenda.bookmarked().size).toBe(0);
   });
+
+  it('lets a second card be added while the first write is still in flight (each card waits for its own)', () => {
+    const { fixture, http, buttons } = setUp();
+    buttons()[0].click();
+    fixture.detectChanges();
+    expect(buttons()[0].disabled).toBe(true);
+    expect(buttons()[1].disabled).toBe(false);
+    buttons()[1].click();
+    fixture.detectChanges();
+    const writes = http.match((req) => req.method === 'PUT');
+    expect(writes.map((w) => w.request.url)).toEqual([
+      `${AGENDA_URL}/${TALK.id}`,
+      `${AGENDA_URL}/${OTHER_TALK.id}`,
+    ]);
+    writes.forEach((w) => w.flush(null, { status: 204, statusText: 'No Content' }));
+    fixture.detectChanges();
+    // Each success re-reads the agenda and the newest read wins: the earlier one is cancelled.
+    http
+      .match(AGENDA_URL)
+      .filter((r) => !r.cancelled)
+      .forEach((r) =>
+        r.flush({
+          profileId: AISHA.id,
+          displayName: AISHA.displayName,
+          bookmarked: [{ sessionId: TALK.id }, { sessionId: OTHER_TALK.id }],
+          attended: [],
+        }),
+      );
+    fixture.detectChanges();
+    expect(Array.from(buttons()).map((b) => b.getAttribute('aria-pressed'))).toEqual([
+      'true',
+      'true',
+    ]);
+  });
+
 });

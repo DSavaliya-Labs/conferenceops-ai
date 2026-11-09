@@ -104,16 +104,18 @@ export class AgendaService {
     const write = adding
       ? this.portal.bookmark(profileId, sessionId)
       : this.portal.unbookmark(profileId, sessionId);
+    const done = () =>
+      this.busy.update((s) => {
+        const next = new Set(s);
+        next.delete(sessionId);
+        return next;
+      });
     write.subscribe({
       next: () => {
         if (this.personas.selectedId() !== profileId) {
           return;
         }
-        this.busy.update((busy) => {
-          const next = new Set(busy);
-          next.delete(sessionId);
-          return next;
-        });
+        done();
         this.announcement.set(
           adding ? `Added “${title}” to My Agenda.` : `Removed “${title}” from My Agenda.`,
         );
@@ -123,13 +125,9 @@ export class AgendaService {
         if (this.personas.selectedId() !== profileId) {
           return;
         }
+        done();
         this.pending.update((m) => {
           const next = new Map(m);
-          next.delete(sessionId);
-          return next;
-        });
-        this.busy.update((busy) => {
-          const next = new Set(busy);
           next.delete(sessionId);
           return next;
         });
