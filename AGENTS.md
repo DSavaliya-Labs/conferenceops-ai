@@ -38,7 +38,9 @@ and shows a platform run by an AI operations team.
 | `backend/conferenceops/` | `core_app`, `discovery_app`, `worker`, shared domain, services and repositories |
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
-| `contracts/` | Committed OpenAPI schema and the generated Angular client |
+| `backend/conferenceops/personas.py` | The persona switcher's list, `GET /api/v1/demo/profiles` on core-api (public fields only), and the `X-Demo-Profile-ID` header (AUTHZ-1) |
+| `backend/conferenceops/where_next.py`, `where_next_data.py` | "Where should I go next?", `POST /api/v1/recommendations/next` on discovery-api: hard rules, then ranking, with checkable reasons; the ranking weights live in `where_next.py` |
+| `contracts/` | Committed OpenAPI schema (core-api and discovery-api in one document, from `python -m conferenceops.export_openapi`) and the generated Angular client |
 | `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it |
 | `deploy/chart/` | Helm chart: the web app (the public entry point), the APIs, the worker, PostgreSQL, Elasticsearch and the collector |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
