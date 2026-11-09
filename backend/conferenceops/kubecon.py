@@ -12,6 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DbSession
 
 from conferenceops.catalog import SessionData, upsert_session
+from conferenceops.db import enqueue
 from conferenceops.models import (
     AccessFact,
     AccessFactKind,
@@ -20,6 +21,7 @@ from conferenceops.models import (
     EventKind,
     Level,
     Room,
+    Session,
     SessionSpeaker,
     Speaker,
 )
@@ -165,7 +167,16 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
         if ext not in speakers:
             speakers[ext] = Speaker(conference_id=conf.id, external_id=ext, name=name)
             db.add(speakers[ext])
+        elif speakers[ext].name != name:
+            speakers[ext].name = name
     db.flush()
+
+    existing_sessions = _by_external(db, Session, conf.id)
+    feed_session_ids = {session.external_id for session in parsed.sessions}
+    for ext, row in existing_sessions.items():
+        if ext not in feed_session_ids:
+            enqueue(db, "session", row.id, row.revision + 1, kind="delete")
+            db.delete(row)
 
     changed = 0
     for s in parsed.sessions:
@@ -187,11 +198,14 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
             ),
         )
         changed += did_change
-        if did_change:
+        current_speaker_ids = {
+            link.speaker_id for link in db.scalars(select(SessionSpeaker).where(SessionSpeaker.session_id == row.id))
+        }
+        desired_speaker_ids = {speakers[ext].id for ext in s.speaker_external_ids if ext in speakers}
+        if current_speaker_ids != desired_speaker_ids:
             db.execute(delete(SessionSpeaker).where(SessionSpeaker.session_id == row.id))
-            for ext in s.speaker_external_ids:
-                if ext in speakers:
-                    db.add(SessionSpeaker(session_id=row.id, speaker_id=speakers[ext].id))
+            for speaker_id in desired_speaker_ids:
+                db.add(SessionSpeaker(session_id=row.id, speaker_id=speaker_id))
 
     db.execute(delete(AccessFact).where(AccessFact.conference_id == conf.id))
     for kind, text, location in ACCESS_FACTS:

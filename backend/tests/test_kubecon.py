@@ -1,8 +1,10 @@
+import copy
+import uuid
 from datetime import UTC, datetime
 
 from conferenceops.indexing import DIMENSIONS, MAPPING, embedding_text
-from conferenceops.kubecon import ACCESS_FACTS, ACCESS_PAGE, parse_feed, venue_instant
-from conferenceops.models import Level, Session
+from conferenceops.kubecon import ACCESS_FACTS, ACCESS_PAGE, SLUG, import_kubecon, parse_feed, venue_instant
+from conferenceops.models import Conference, Level, OutboxJob, Room, Session, SessionSpeaker, Speaker
 
 FEED = {
     "categories": [
@@ -88,3 +90,119 @@ def test_search_documents_carry_a_1536_dimension_cosine_vector_and_no_private_fi
 def test_the_embedded_text_is_the_title_and_abstract():
     session = Session(title="Tracing Everything", abstract="OpenTelemetry for beginners.")
     assert embedding_text(session) == "Tracing Everything\n\nOpenTelemetry for beginners."
+
+
+class _Scalars:
+    def __init__(self, rows):
+        self.rows = list(rows)
+
+    def all(self):
+        return self.rows
+
+    def one_or_none(self):
+        assert len(self.rows) <= 1
+        return self.rows[0] if self.rows else None
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class _ImportDb:
+    def __init__(self, conference, rooms=(), speakers=(), sessions=(), session_speakers=()):
+        self.conference = conference
+        self.rooms = list(rooms)
+        self.speakers = list(speakers)
+        self.sessions = list(sessions)
+        self.session_speakers = list(session_speakers)
+        self.outbox = []
+
+    def scalars(self, statement):
+        entity = statement.column_descriptions[0]["entity"]
+        rows = {
+            Conference: [self.conference],
+            Room: self.rooms,
+            Speaker: self.speakers,
+            Session: self.sessions,
+            SessionSpeaker: self.session_speakers,
+        }[entity]
+        return _Scalars(rows)
+
+    def add(self, row):
+        if isinstance(row, OutboxJob):
+            self.outbox.append(row)
+        elif isinstance(row, SessionSpeaker):
+            self.session_speakers.append(row)
+        elif isinstance(row, Speaker):
+            self.speakers.append(row)
+        elif isinstance(row, Room):
+            self.rooms.append(row)
+
+    def delete(self, row):
+        self.sessions.remove(row)
+
+    def execute(self, statement):
+        if statement.table.name == "session_speakers":
+            self.session_speakers.clear()
+
+    def flush(self):
+        pass
+
+
+def _import_session(conference_id, room_id):
+    return Session(
+        id=uuid.uuid4(),
+        conference_id=conference_id,
+        external_id="100",
+        title="Tracing Everything",
+        abstract="OpenTelemetry for beginners.",
+        starts_at=venue_instant("2026-11-10T10:30:00"),
+        ends_at=venue_instant("2026-11-10T11:00:00"),
+        level=Level.BEGINNER,
+        topics=["Observability", "OpenTelemetry"],
+        room_id=room_id,
+        is_service=False,
+        materials={"slides": "https://example.org/slides.pdf"},
+        revision=3,
+    )
+
+
+def test_import_reconciles_speakers_even_when_session_fields_are_unchanged():
+    conference_id, room_id, speaker_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    conference = Conference(id=conference_id, slug=SLUG)
+    room = Room(id=room_id, conference_id=conference_id, external_id="87691", name="Salt Palace | Level 1 | Hall DE")
+    speaker = Speaker(id=speaker_id, conference_id=conference_id, external_id="sp-1", name="Old Speaker Name")
+    session = _import_session(conference_id, room_id)
+    db = _ImportDb(conference, [room], [speaker], [session])
+    feed = copy.deepcopy(FEED)
+    feed["sessions"] = feed["sessions"][:1]
+
+    result = import_kubecon(db, feed)
+
+    assert result["changed"] == 0
+    assert speaker.name == "Real Speaker"
+    assert [(link.session_id, link.speaker_id) for link in db.session_speakers] == [(session.id, speaker_id)]
+
+    feed["sessions"][0]["speakers"] = []
+    import_kubecon(db, feed)
+    assert db.session_speakers == []
+    assert session.revision == 3
+
+
+def test_import_deletes_sessions_absent_from_the_feed_and_enqueues_tombstones():
+    conference_id = uuid.uuid4()
+    conference = Conference(id=conference_id, slug=SLUG)
+    stale = [
+        Session(id=uuid.uuid4(), conference_id=conference_id, external_id=external_id, revision=revision)
+        for external_id, revision in (("100", 4), ("101", 2))
+    ]
+    db = _ImportDb(conference, sessions=stale)
+    feed = copy.deepcopy(FEED)
+    feed["sessions"] = []
+
+    counts = import_kubecon(db, feed)
+
+    assert counts["sessions"] == 0
+    assert db.sessions == []
+    assert {(job.entity_id, job.entity_revision, job.kind) for job in db.outbox} == {
+        (row.id, row.revision + 1, "delete") for row in stale
+    }

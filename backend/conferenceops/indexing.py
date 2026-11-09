@@ -5,10 +5,11 @@ content. Documents hold public session data only: no persona preferences, no fre
 
 import logging
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
-from elasticsearch import ConflictError, Elasticsearch
+from elasticsearch import ConflictError, Elasticsearch, NotFoundError
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -67,6 +68,14 @@ def embedding_text(session: Session) -> str:
     return f"{session.title}\n\n{session.abstract or ''}".strip()
 
 
+def _fail(job: OutboxJob, exc: Exception, now: Callable[[], datetime]) -> None:
+    job.attempts += 1
+    job.last_error = type(exc).__name__
+    job.status = OutboxStatus.FAILED if job.attempts >= MAX_ATTEMPTS else OutboxStatus.PENDING
+    job.next_attempt_at = now() + timedelta(seconds=2**job.attempts)
+    log.warning("indexing job failed", extra={"job": str(job.id), "attempts": job.attempts})
+
+
 def document(session: Session, conference: Conference, room: Room | None, embedding: list[float]) -> dict:
     return {
         "conference": conference.slug,
@@ -103,19 +112,44 @@ def process_outbox(
     ).all()
     if not jobs:
         return 0
-    sessions = {s.id: s for s in db.scalars(select(Session).where(Session.id.in_([j.entity_id for j in jobs])))}
+    valid_jobs = []
+    for job in jobs:
+        if job.entity_type == "session" and job.kind in {"index", "delete"}:
+            valid_jobs.append(job)
+        else:
+            _fail(job, ValueError("unsupported outbox entity or kind"), now)
+
+    index_jobs = [job for job in valid_jobs if job.kind == "index"]
+    session_ids = {job.entity_id for job in index_jobs}
+    sessions = {s.id: s for s in db.scalars(select(Session).where(Session.id.in_(session_ids)))} if session_ids else {}
     conferences = {c.id: c for c in db.scalars(select(Conference))}
     rooms = {r.id: r for r in db.scalars(select(Room).where(Room.id.in_([s.room_id for s in sessions.values()])))}
 
     live = [s for s in sessions.values()]
-    vectors = (
-        dict(zip([s.id for s in live], embedder.embed([embedding_text(s) for s in live]), strict=True)) if live else {}
-    )
+    try:
+        vectors = (
+            dict(zip([s.id for s in live], embedder.embed([embedding_text(s) for s in live]), strict=True))
+            if live
+            else {}
+        )
+    except Exception as exc:  # noqa: BLE001 - retry the batch after an embedding failure
+        for job in valid_jobs:
+            _fail(job, exc, now)
+        return 0
+
     indexed = 0
-    for job in jobs:
+    for job in valid_jobs:
         session = sessions.get(job.entity_id)
         try:
-            if session is not None:
+            if job.kind == "delete":
+                with suppress(NotFoundError):
+                    es.delete(
+                        index=ALIAS,
+                        id=str(job.entity_id),
+                        version=job.entity_revision,
+                        version_type="external_gte",
+                    )
+            elif session is not None:
                 es.index(
                     index=ALIAS,
                     id=str(session.id),
@@ -130,9 +164,5 @@ def process_outbox(
         except ConflictError:
             job.status = OutboxStatus.DONE  # a newer revision is already indexed
         except Exception as exc:  # noqa: BLE001 - one bad job must not stop the batch
-            job.attempts += 1
-            job.last_error = type(exc).__name__
-            job.status = OutboxStatus.FAILED if job.attempts >= MAX_ATTEMPTS else OutboxStatus.PENDING
-            job.next_attempt_at = now() + timedelta(seconds=2**job.attempts)
-            log.warning("indexing job failed", extra={"job": str(job.id), "attempts": job.attempts})
+            _fail(job, exc, now)
     return indexed
