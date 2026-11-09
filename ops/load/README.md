@@ -7,9 +7,12 @@ load shows whether the fix worked.
 | File | What it is |
 |---|---|
 | `search-peak.js` | The k6 script: constant arrival rate, one `POST /api/v1/search` per iteration |
+| `search-summary.js` | Its per-request counting and end-of-test summary, with no k6 imports, so Node can test them |
+| `search-summary.test.js` | Unit tests for `search-summary.js` (`node --test`); `package.json` makes the folder's files ES modules |
 | `queries.json` | 40 synthetic attendee search phrases about KubeCon topics, sent in a fixed rotation |
 | `k6-job.yaml` | The Kubernetes Job that runs the script in the `conferenceops` namespace |
 | [`scripts/load-run.sh`](../../scripts/load-run.sh) | Starts the Job, waits for it and prints the summary |
+| [`scripts/tests/load-run.test.sh`](../../scripts/tests/load-run.test.sh) | Tests for the runner and the k6 summary, with no cluster |
 
 ## What it measures
 
@@ -88,18 +91,25 @@ It needs `kubectl` and `jq`, and runs on the Mac's bash 3.2. The script:
    nor `docker-desktop`, unless you pass `--context-ok`;
 2. checks that the namespace and the `conferenceops-discovery` Service exist, and prints how many Ready endpoints
    the Service has;
-3. refuses to start while another load test is still running, because stopping it would change the offered load;
-   `--replace` stops it and starts the new one;
-4. creates or updates the ConfigMap `conferenceops-load` from `search-peak.js` and `queries.json`, deletes the
-   previous Job (after saving its logs, if no copy exists yet), and applies `k6-job.yaml` with `RATE` and
-   `DURATION` set;
-5. waits for the Job, prints its logs, and saves a copy in `ops/load/results/` (git ignores it).
+3. refuses to start while another load test is still running, because stopping it would change the offered load.
+   `--replace` stops it the way that keeps its summary (SIGINT, below) and waits up to 2 minutes for its Job to
+   finish; if it doesn't, nothing is deleted;
+4. deletes the previous Job only once `ops/load/results/` (git ignores it) holds a copy of its logs with k6's
+   summary, and saves that copy if nobody did. When its logs can't be copied or have no summary, for example after
+   an out-of-memory kill, it stops and leaves the Job for you to look at; `--replace` deletes it anyway, with a
+   warning;
+5. creates or updates the ConfigMap `conferenceops-load` from `search-peak.js`, `search-summary.js` and
+   `queries.json`, deletes the previous Job, and applies `k6-job.yaml` with `RATE` and `DURATION` set;
+6. waits for the Job, says when its pod can't be scheduled or its container is waiting, prints its logs, and saves a
+   copy in `ops/load/results/`.
 
 It exits with k6's exit code: 0 when every threshold is met, 99 when one was crossed, 105 when the run was stopped
 early. Ctrl-C stops the waiting, not the test.
 
 - **Stop a run early and keep its summary.** `kubectl -n conferenceops exec job/conferenceops-load -- kill -INT 1`.
-  k6 stops, prints the summary and exits 105. Deleting the Job instead loses the summary with the pod.
+  k6 stops, prints the summary and exits 105. Deleting the Job instead loses the summary with the pod: k6 runs with
+  `--quiet`, so it prints nothing until it stops, and the SIGTERM from the deletion makes it print the summary into
+  a log that is deleted with the pod.
 - **More VUs.** `PRE_VUS` and `MAX_VUS` follow `RATE`. To set them in the cluster, add them to the Job's `env` in
   `k6-job.yaml`. k6 2.3.0 on the Mac peaked at 66 MiB with 96 VUs and 110 MiB with 300, well within the Job's
   512 MiB limit.
@@ -172,13 +182,45 @@ and inversely with `w`: `u = 0.1` gives 1.7, and `u = 0.5` gives 8.4.
 - §15.4 needs at least 400 requests in its 60-second recovery window, so the rate must be at least 7 (400 / 60 =
   6.7). If `R_peak` is lower, the sample size sets the rate, not the estimate: then call it "a load test at or above
   our estimated peak".
-- The test only shows an overload, and a recovery with three replicas, when `C_pod < R_test ≤ h × 3 × C_pod`, where
-  `h` (an assumption, for example 0.8) keeps headroom on the three pods. If one pod already handles `R_test`, that is
-  the honest result: record it, and don't raise the rate above the estimate to force a failure.
 - `R_test = max(ceil(R_peak), 7)`.
+- With the admission limit at about `C_pod`, one pod accepts about `C_pod` requests a second and rejects the rest, a
+  share of `1 − C_pod / R_test`. The incident starts only when the Dash0 check
+  ([`discovery-rejecting-searches.yaml`](../../observability/dash0/checks/discovery-rejecting-searches.yaml)) sees
+  more than 10% 5xx in a minute with at least 100 requests (`R_test ≥ 7` gives 420), in two evaluations in a row.
+  So the test shows an incident, and a recovery with three replicas, only when
+  `1.2 × C_pod ≤ R_test ≤ h × 3 × C_pod`:
+  - the lower bound rejects at least 1 − 1/1.2 ≈ 17%, clearly above the check's 10%, with room for other discovery
+    traffic, such as real attendees, that dilutes the share. Between `C_pod` and about `1.11 × C_pod`, one pod
+    rejects less than 10%: it is overloaded, but the check never fires and no Agent0 pull request follows. For
+    example, `C_pod = 10` and `R_test = 11` reject 9.1%;
+  - `h` (an assumption, for example 0.8) keeps headroom on the three pods.
+- When `R_test` is below `1.2 × C_pod`, record the honest result: "overloaded, but below the alert threshold", or,
+  when one pod already handles `R_test`, "one pod handles our estimated peak". Don't raise the rate above the
+  estimate to make the check fire, and don't change the check's threshold (OPS-1, §15.2).
 
 **The default of 8 requests per second** is §15.2's "initial trial load", not the output of this formula. It meets the
 sample size (480 requests a minute). With §15.2's starting guess of about 5 accepted requests per second per pod,
 admission control would reject about 1 − 5/8 = 37.5% of the requests on one pod, and almost none on three pods
-(8/3 ≈ 2.7 per pod). That is the expected shape under those assumptions, not a measurement: calibrate `C_pod` first,
-then choose the rate.
+(8/3 ≈ 2.7 per pod). With `C_pod = 5`, 8 is inside the window above (6 ≤ 8 ≤ 12 with `h = 0.8`). That is the
+expected shape under those assumptions, not a measurement: calibrate `C_pod` first, then choose the rate.
+
+## Test the tooling
+
+```bash
+bash scripts/tests/load-run.test.sh
+node --test ops/load/search-summary.test.js
+```
+
+Neither needs a cluster. The first takes about 25 s on the Mac; the second, the unit tests of `search-summary.js`
+with fixture data, needs only Node.
+
+- `load-run.sh` runs from a temporary copy of the files, with a fake `kubectl` that keeps one Job's state in files.
+  It covers the argument checks, the context guard, the refusal while a run is active, `--replace`, saving a
+  previous run's logs once, keeping a Job whose logs have no summary, the unschedulable message and k6's exit codes.
+  The steps that need no cluster (`set env --local`, `patch --local`, `create --dry-run=client`) run in the real
+  `kubectl`, offline, so the test needs `kubectl` and `jq`.
+- `search-peak.js` runs in the real k6 against a local stub of discovery, and its summary is compared with the
+  stub's own counts, including the NO DATA result. These checks need k6, python3 and curl, and are skipped without
+  them.
+
+Neither is in CI yet.

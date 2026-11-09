@@ -1,4 +1,9 @@
-const TRACKED_STATUSES = [200, 400, 404, 422, 429, 500, 502, 503, 504];
+// The search capacity test's per-request counting and its end-of-test summary, imported by search-peak.js. It holds
+// no k6 imports, so ops/load/search-summary.test.js runs it in plain Node (node --test).
+
+// The statuses that get their own counter; search-peak.js creates the counters from this list, and the summary reads
+// them back, so the two can't drift apart.
+export const TRACKED_STATUSES = [200, 400, 404, 422, 429, 500, 502, 503, 504];
 
 export function createRecorder({
   statusCounters,

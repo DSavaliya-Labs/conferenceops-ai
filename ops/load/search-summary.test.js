@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createRecorder, createSummaryHandler } from './search-summary.js';
+import { TRACKED_STATUSES, createRecorder, createSummaryHandler } from './search-summary.js';
 
 const counter = () => ({ count: 0, add(n) { this.count += n; } });
 
@@ -148,4 +148,14 @@ test('empty runs keep undefined rates and latencies null and mark empty threshol
   assert.deepEqual(report.p95Ms, { all: null, successful: null });
   assert.deepEqual(report.thresholds.map((item) => item.result), ['no data', 'no data', 'no data']);
   assert.match(result.stdout, /successful n\/a/);
+});
+
+test('summary reports every tracked status that search-peak.js counts, and the rest as other', () => {
+  const metrics = { http_reqs: { values: { count: TRACKED_STATUSES.length + 1 } } };
+  for (const code of TRACKED_STATUSES) metrics[`search_status_${code}`] = { values: { count: 1 } };
+  metrics.search_status_other = { values: { count: 1 } };
+
+  const report = readReport(summaryHandler()({ state: { testRunDurationMs: 1000 }, metrics }));
+  const expected = Object.fromEntries(TRACKED_STATUSES.map((code) => [String(code), 1]));
+  assert.deepEqual(report.status, { ...expected, other: 1 });
 });

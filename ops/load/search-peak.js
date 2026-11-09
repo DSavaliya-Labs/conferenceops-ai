@@ -1,6 +1,7 @@
 // Search capacity test (PLAN.md §15.2): a fixed offered load at our estimated peak against discovery-api's
 // POST /api/v1/search. Run it as a Kubernetes Job against the discovery ClusterIP Service (scripts/load-run.sh), never
-// through a port-forward. ops/load/README.md explains the rate and how to calibrate.
+// through a port-forward. ops/load/README.md explains the rate and how to calibrate. The per-request counting and the
+// end-of-test summary live in search-summary.js.
 //
 // - Each iteration sends exactly one request, on a new connection, and never retries.
 // - The arrival rate is constant: errors and slow answers never change the offered load.
@@ -19,7 +20,7 @@ import http from 'k6/http';
 import exec from 'k6/execution';
 import { SharedArray } from 'k6/data';
 import { Counter } from 'k6/metrics';
-import { createRecorder, createSummaryHandler } from './search-summary.js';
+import { TRACKED_STATUSES, createRecorder, createSummaryHandler } from './search-summary.js';
 
 const TIMEOUT_SECONDS = 10;
 const CAPACITY_CODE = 'DISCOVERY_CAPACITY_EXHAUSTED';
@@ -42,7 +43,6 @@ const queries = new SharedArray('search queries', () => {
 
 // Status-code counts for the summary. The 503 counter is the one the incident is about; a 503 that carries the
 // admission-control code is also counted on its own, so capacity rejections are never confused with outages.
-const TRACKED_STATUSES = [200, 400, 404, 422, 429, 500, 502, 503, 504];
 const statusCounters = {};
 for (const code of TRACKED_STATUSES) statusCounters[code] = new Counter(`search_status_${code}`);
 const otherStatus = new Counter('search_status_other');

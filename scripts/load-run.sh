@@ -2,18 +2,22 @@
 # Run the search capacity test (ops/load/search-peak.js) as a Kubernetes Job against the discovery ClusterIP Service,
 # never through a port-forward (PLAN.md §15.2). It creates or updates the ConfigMap from ops/load/, deletes the
 # previous Job, applies ops/load/k6-job.yaml with the chosen rate and duration, waits for the Job and prints its logs.
-# Copies of the logs, including a previous run's that nobody saved, go to ops/load/results/, which git ignores.
+# Copies of the logs go to ops/load/results/, which git ignores. The previous Job is deleted only once a copy of its
+# logs with k6's summary is there, or with --replace; --replace stops a running k6 with SIGINT, so it prints one.
 #   Usage: scripts/load-run.sh [--rate N] [--duration 5m] [--replace] [--context-ok]
 #   Uses the current kubectl context (or KUBECONFIG) and refuses one whose name contains neither "conferenceops" nor
 #   "docker-desktop", unless --context-ok is passed. Needs kubectl and jq. Runs on the Mac's bash 3.2.
+#   Tests: bash scripts/tests/load-run.test.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOAD_DIR="$ROOT/ops/load"
 JOB_FILE="$LOAD_DIR/k6-job.yaml"
 RESULTS_DIR="$LOAD_DIR/results"
+SUMMARY_LINE='^{"report":"conferenceops-load-summary"'  # the JSON line search-peak.js prints when k6 stops
 POLL_SECONDS=5
 EXTRA_WAIT_SECONDS=600  # scheduling, the image pull, k6's 30 s graceful stop and the summary
+STOP_WAIT_SECONDS=120   # --replace: how long a running k6 gets to stop after SIGINT and print its summary
 
 # Set once in main, from the current context and the Job manifest.
 CONTEXT=""
@@ -29,7 +33,9 @@ Usage: scripts/load-run.sh [--rate N] [--duration 5m] [--replace] [--context-ok]
 Runs ops/load/search-peak.js as the Kubernetes Job in ops/load/k6-job.yaml, against the discovery ClusterIP Service.
   --rate N        requests per second, a positive integer (default 8)
   --duration D    how long to offer the load, with h, m and s parts: 90s, 5m, 1h30m (default 5m)
-  --replace       stop a load test that is still running and start this one (that changes the offered load)
+  --replace       stop a load test that is still running and start this one (that changes the offered load). k6
+                  gets SIGINT, so it prints its summary, and a copy of its logs is saved before its Job is deleted.
+                  Also deletes a previous Job whose logs couldn't be saved with a summary
   --context-ok    allow a kubectl context whose name contains neither "conferenceops" nor "docker-desktop"
 Exits with k6's exit code: 0 every threshold met, 99 a threshold crossed (reported only), 105 stopped early.
 EOF
@@ -92,19 +98,24 @@ save_logs() {  # save_logs <job-uid> <file-prefix>: copy the Job's logs into ops
   echo "$file"
 }
 
-already_saved() {  # already_saved <job-uid>: a copy of this Job's logs is already in ops/load/results/
+has_summary() { grep -q -- "$SUMMARY_LINE" "$1"; }  # has_summary <file>: it holds k6's end-of-test summary
+
+saved_with_summary() {  # saved_with_summary <job-uid>: ops/load/results/ has a copy of this Job's logs with a summary
   local f
   for f in "$RESULTS_DIR"/*-"${1:0:8}".log; do
-    if [[ -e "$f" ]]; then return 0; fi
+    if [[ -e "$f" ]] && has_summary "$f"; then return 0; fi
   done
   return 1
 }
 
-wait_for_job() {  # wait_for_job <job-uid> <timeout-seconds>: prints Complete or Failed once the Job has finished
+wait_for_job() {  # wait_for_job <job-uid> <timeout-seconds> [quiet]: prints Complete or Failed once the Job finished
   local selector="batch.kubernetes.io/controller-uid=$1" deadline=$((SECONDS + $2))
   local true_conditions='{range .status.conditions[?(@.status=="True")]}{.type} {end}'
   local state='.items[0].status.containerStatuses[0].state'
-  local job conditions pod started waiting announced=false last_waiting="" errors=0
+  local scheduled='.items[0].status.conditions[?(@.type=="PodScheduled")]'
+  local job conditions pod started waiting unscheduled why detail
+  local announced=false last_waiting="" last_why="" errors=0
+  if [[ "${3:-}" == quiet ]]; then announced=true; fi
   while ((SECONDS < deadline)); do
     if ! job=$(kc get job "$JOB" -o jsonpath="{.metadata.uid}|$true_conditions"); then
       # A long run outlives API hiccups and token refreshes; give up only after half a minute of errors.
@@ -126,10 +137,17 @@ wait_for_job() {  # wait_for_job <job-uid> <timeout-seconds>: prints Complete or
       *" Complete "*) echo Complete; return 0 ;;
       *" Failed "*) echo Failed; return 0 ;;
     esac
-    pod=$(kc get pods -l "$selector" -o jsonpath="{$state.running.startedAt}|{$state.waiting.reason}" 2>/dev/null \
-      || true)
+    # The container's state once the pod is on a node. Before that the pod has no container status, only the reason
+    # it isn't scheduled (Unschedulable when no node has room for its requests).
+    pod=$(kc get pods -l "$selector" \
+      -o jsonpath="{$state.running.startedAt}|{$state.waiting.reason}|{$scheduled.reason}|{$scheduled.message}" \
+      2>/dev/null || true)
     started="${pod%%|*}"
-    waiting="${pod#*|}"
+    pod="${pod#*|}"
+    waiting="${pod%%|*}"
+    unscheduled="${pod#*|}"
+    why="${unscheduled%%|*}"
+    detail="${unscheduled#*|}"
     if [[ -n "$started" && "$announced" == false ]]; then
       say "k6 running since $started"
       announced=true
@@ -138,9 +156,53 @@ wait_for_job() {  # wait_for_job <job-uid> <timeout-seconds>: prints Complete or
       say "the k6 container is waiting: $waiting (see kubectl describe pod -l $selector)"
     fi
     last_waiting="$waiting"
+    if [[ -n "$why" && "$why" != "$last_why" ]]; then
+      say "the k6 pod isn't scheduled: $why${detail:+ ($detail)}; see kubectl describe pod -l $selector"
+    fi
+    last_why="$why"
     sleep "$POLL_SECONDS"
   done
   say "gave up after $2 s waiting for Job $JOB to finish; it may still be running"
+  return 1
+}
+
+stop_running() {  # stop_running <job-uid>: stop the running k6 with SIGINT, so it prints its summary, and wait for it
+  say "--replace: stopping the running load test with SIGINT, so k6 prints its summary before its Job is deleted"
+  if ! kc exec "job/$JOB" -- kill -INT 1; then
+    say "warning: couldn't send SIGINT to k6 (kubectl's error is above); is its container running?"
+    return 0
+  fi
+  if ! wait_for_job "$1" "$STOP_WAIT_SECONDS" quiet >/dev/null; then
+    say "nothing was deleted. Check Job $JOB before you run this again:"
+    say "  kubectl --context $CONTEXT -n $NAMESPACE get job $JOB"
+    return 1
+  fi
+}
+
+keep_previous_logs() {  # keep_previous_logs <job-uid> <replace>: before a finished Job is deleted, keep its summary
+  local copy problem
+  # Its waiter, or an earlier run of this script, may have saved it already.
+  if saved_with_summary "$1"; then return 0; fi
+  # Otherwise its summary may be the only copy of an earlier run's evidence, for example after Ctrl-C.
+  if copy=$(save_logs "$1" search-peak-previous); then
+    if has_summary "$copy"; then
+      say "saved the previous run's logs to ${copy#"$ROOT"/}"
+      return 0
+    elif [[ -s "$copy" ]]; then
+      problem="the previous run's logs have no k6 summary (what they hold is in ${copy#"$ROOT"/})"
+    else
+      rm -f "$copy"  # kubectl prints nothing for a pod that never ran
+      problem="the previous run's logs are empty (k6 may never have started)"
+    fi
+  else
+    problem="couldn't copy the previous run's logs (kubectl's error is above)"
+  fi
+  if [[ "$2" == true ]]; then
+    say "warning: $problem; --replace deletes Job $JOB anyway"
+    return 0
+  fi
+  say "$problem, so Job $JOB is left in place."
+  say "Look at it (kubectl --context $CONTEXT -n $NAMESPACE describe job $JOB), then pass --replace to delete it."
   return 1
 }
 
@@ -183,6 +245,14 @@ main() {
   CONTEXT=$(current_context "$context_ok") || return 1
   local manifest configmap base_url
   manifest=$(kubectl set env --local -f "$JOB_FILE" "RATE=$rate" "DURATION=$duration" -o json) || return 1
+  if [[ -z "$manifest" ]]; then  # set env prints nothing when the file already has these values
+    manifest=$(kubectl patch --local -f "$JOB_FILE" -p '{}' -o json) || return 1
+  fi
+  if ! jq -e --arg rate "$rate" --arg duration "$duration" '[.spec.template.spec.containers[0].env[]?
+      | {(.name): .value}] | add | .RATE == $rate and .DURATION == $duration' >/dev/null <<<"$manifest"; then
+    say "couldn't set RATE=$rate and DURATION=$duration in the Job from $JOB_FILE"
+    return 1
+  fi
   JOB=$(jq -r '.metadata.name // ""' <<<"$manifest")
   NAMESPACE=$(jq -r '.metadata.namespace // ""' <<<"$manifest")
   configmap=$(jq -r 'first(.spec.template.spec.volumes[]? | .configMap.name // empty) // ""' <<<"$manifest")
@@ -192,14 +262,14 @@ main() {
     say "$JOB_FILE needs a name, a namespace and a ConfigMap volume"
     return 1
   fi
-  say "context $CONTEXT, namespace $NAMESPACE, Job $JOB: $rate requests/s for $duration"
+  say "context $CONTEXT, namespace $NAMESPACE, Job $JOB: $rate requests/s for $duration ($seconds s)"
   if ! kc get namespace "$NAMESPACE" >/dev/null; then
     say "can't read namespace $NAMESPACE (kubectl's error is above): is the cluster reachable and the app deployed?"
     return 1
   fi
   if [[ -n "$base_url" ]]; then check_target "$base_url" || return 1; fi
 
-  local previous previous_uid saved
+  local previous previous_uid
   previous=$(kc get job "$JOB" --ignore-not-found -o jsonpath='{.metadata.uid}|{.status.active}') || return 1
   if [[ -n "$previous" ]]; then
     previous_uid="${previous%%|*}"
@@ -209,12 +279,9 @@ main() {
         say "Wait for it to finish, or pass --replace to stop it and start this one."
         return 1
       fi
-      say "--replace: stopping the running load test"
+      stop_running "$previous_uid" || return 1
     fi
-    # Its summary may be the only copy of an earlier run's evidence, for example after Ctrl-C.
-    if ! already_saved "$previous_uid" && saved=$(save_logs "$previous_uid" search-peak-previous); then
-      say "saved the previous run's logs to ${saved#"$ROOT"/}"
-    fi
+    keep_previous_logs "$previous_uid" "$replace" || return 1
   fi
 
   kc create configmap "$configmap" --from-file=search-peak.js="$LOAD_DIR/search-peak.js" \
@@ -240,4 +307,4 @@ main() {
   finish "$state" "$code"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then main "$@"; exit; fi
+main "$@"; exit
