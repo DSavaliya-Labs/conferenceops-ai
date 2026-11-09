@@ -17,7 +17,7 @@ import { PersonaService } from './personas';
       [class.btn-outline]="!on()"
       [class.btn-primary]="on()"
       [attr.aria-pressed]="on()"
-      [disabled]="!personas.selectedId() || agenda.busy() === sessionId()"
+      [disabled]="!personas.selectedId() || agenda.busy().has(sessionId())"
       (click)="agenda.toggle(sessionId(), title())"
     >
       <app-icon [name]="on() ? 'check' : 'bookmark'" [size]="16" />
