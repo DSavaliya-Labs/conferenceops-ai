@@ -131,6 +131,18 @@ export async function loadPersonas<T>(
   await settle(view);
 }
 
+/** Answer (or clear) the shared agenda service's request, which every persona pick sends. */
+export function flushAgenda<T>(view: View<T>, bookmarked: string[] = []): void {
+  for (const req of view.http.match('/api/v1/me/agenda')) {
+    req.flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: bookmarked.map((sessionId) => ({ sessionId })),
+      attended: [],
+    });
+  }
+}
+
 export function key(target: Element, key: string): void {
   target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
 }

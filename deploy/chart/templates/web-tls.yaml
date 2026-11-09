@@ -1,0 +1,24 @@
+{{- if .Values.public.tls.enabled }}
+# HTTPS on the public entry point. The certificate is the Secret public.tls.secretName (type kubernetes.io/tls): the
+# deploy workflow creates it once, self-signed for the public hostname, because cloudapp.azure.com isn't a zone we own
+# (no managed certificate). The browser warns once; after that the page is a secure context, which the microphone
+# (dictation) needs. Plain HTTP stays on for the QR code and the deploy's checks.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "co.fullname" . }}-web-tls
+  labels:
+    {{- include "co.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+data:
+  tls.conf.template: |
+    # Rendered by the image's entrypoint next to default.conf. Same locations as the HTTP listener.
+    server {
+        listen 8443 ssl;
+        http2 on;
+        ssl_certificate /etc/nginx/tls/tls.crt;
+        ssl_certificate_key /etc/nginx/tls/tls.key;
+        ssl_protocols TLSv1.2 TLSv1.3;
+        include /etc/nginx/conf.d/locations.inc;
+    }
+{{- end }}

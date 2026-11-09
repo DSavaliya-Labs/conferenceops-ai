@@ -26,4 +26,7 @@ spec:
     app.kubernetes.io/component: {{ .Values.public.target }}
   ports:
     - {name: http, port: 80, targetPort: http, appProtocol: http}
+    {{- if .Values.public.tls.enabled }}
+    - {name: https, port: 443, targetPort: https, appProtocol: https}
+    {{- end }}
 {{- end }}

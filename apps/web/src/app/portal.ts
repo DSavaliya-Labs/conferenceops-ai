@@ -97,7 +97,7 @@ export function formatDayRange(startIso: string, endIso: string): string {
   return `${monthDay.format(start)} – ${monthDay.format(end)}, ${ey}`;
 }
 
-/** The portal's reads: events, published access facts and the persona's agenda. */
+/** The portal's reads (events, published access facts, the persona's agenda) and the agenda's two writes. */
 @Service()
 export class PortalService {
   private readonly http = inject(HttpClient);
@@ -115,6 +115,20 @@ export class PortalService {
   /** The persona travels in the header; the server resolves her (AUTHZ-1). Nothing personal goes in the URL. */
   agenda(profileId: string): Observable<AgendaResponse> {
     return this.http.get<AgendaResponse>('/api/v1/me/agenda', {
+      headers: { [DEMO_PROFILE_HEADER]: profileId },
+    });
+  }
+
+  /** Bookmark a talk for the persona: idempotent, 204 on success, 404 for an unknown persona or talk. */
+  bookmark(profileId: string, sessionId: string): Observable<void> {
+    return this.http.put<void>(`/api/v1/me/agenda/${encodeURIComponent(sessionId)}`, null, {
+      headers: { [DEMO_PROFILE_HEADER]: profileId },
+    });
+  }
+
+  /** Remove a bookmark: idempotent, 204 on success. */
+  unbookmark(profileId: string, sessionId: string): Observable<void> {
+    return this.http.delete<void>(`/api/v1/me/agenda/${encodeURIComponent(sessionId)}`, {
       headers: { [DEMO_PROFILE_HEADER]: profileId },
     });
   }
