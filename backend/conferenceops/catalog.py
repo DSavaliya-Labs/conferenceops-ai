@@ -33,7 +33,11 @@ _FIELDS = ("title", "abstract", "level", "topics", "starts_at", "ends_at", "room
 
 def upsert_session(db: DbSession, data: SessionData) -> tuple[Session, bool]:
     """Insert or update a session by (conference, external ID). Returns the row and whether anything changed.
-    An unchanged session keeps its revision and enqueues nothing, so re-running an import is free."""
+    An unchanged session keeps its revision and enqueues nothing, so re-running an import is free.
+
+    Safe when imports run concurrently: INSERT ... ON CONFLICT DO NOTHING lets exactly one caller create the row,
+    and SELECT ... FOR UPDATE holds the row until commit, so concurrent updates get distinct revisions and each
+    change enqueues exactly one job (DATA-1). The integration tests cover both races."""
     stmt = (
         insert(Session)
         .values(
