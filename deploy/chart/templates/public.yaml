@@ -1,5 +1,14 @@
 {{- if .Values.public.enabled }}
 {{- if not .Values.public.dnsLabel }}{{ fail "public.dnsLabel is required when public.enabled" }}{{ end }}
+# The public entry point: an Azure LoadBalancer in front of the web pods.
+# - externalTrafficPolicy Cluster: every node forwards the port to a Ready web pod, wherever that pod runs, so Azure's
+#   probe finds every node healthy through a rollout. With Local, Azure probed each node's kube-proxy for a local web
+#   pod. Each rollout moved the single pod to the other node, and the load balancer took 5 to 10 s to follow it, so
+#   requests failed around the switch. The cost: nginx sees a node's address instead of the client's (source NAT), and
+#   nothing depends on the client's address.
+# - appProtocol http makes Azure's probe HTTP on the web pods' static /health/ready (the annotation below), which never
+#   waits on the APIs (K8S-1). Without it Azure probes TCP and ignores the path.
+# scripts/check-chart-policy.sh (the helm-policy CI job) checks the selector, the policy and the probe on the render.
 apiVersion: v1
 kind: Service
 metadata:
@@ -11,10 +20,10 @@ metadata:
     service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /health/ready
 spec:
   type: LoadBalancer
-  externalTrafficPolicy: Local
+  externalTrafficPolicy: Cluster
   selector:
     {{- include "co.selector" . | nindent 4 }}
     app.kubernetes.io/component: {{ .Values.public.target }}
   ports:
-    - {name: http, port: 80, targetPort: http}
+    - {name: http, port: 80, targetPort: http, appProtocol: http}
 {{- end }}

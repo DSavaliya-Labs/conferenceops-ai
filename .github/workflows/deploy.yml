@@ -96,9 +96,10 @@ jobs:
             --set web.image.repository="$WEB_IMAGE" --set web.image.tag="$TAG" \
             --server-side=true --force-conflicts --wait --timeout 20m
 
-      # The public LoadBalancer sends traffic to the web pods. Until Azure's health probe catches up with a rollout, it
-      # can pass a new connection to a node without a web pod, where it is dropped. So every request has a time limit,
-      # and the checks are retried together for up to five minutes.
+      # The public LoadBalancer sends traffic to the web pods, and every node forwards it to a Ready one
+      # (externalTrafficPolicy Cluster), so a rollout doesn't wait on Azure's health probe. When a deploy changes the
+      # Service itself, Azure reconfigures the load balancer for a few seconds. So every request has a time limit, and
+      # the checks are retried together for up to five minutes. A failure names the check that failed last.
       - name: The public URL answers
         run: |
           serves() {
@@ -113,19 +114,28 @@ jobs:
               || ! jq -e '.dash0Dataset == "conferenceops"' <<<"$config" >/dev/null; then
               echo "/config.json: not the conferenceops dataset"; return 1
             fi
+            # Browser monitoring (B4) starts only with the ingest-only browser token. The Secrets step writes an empty
+            # value when the aks environment has no DASH0_BROWSER_TOKEN secret, and the app then runs unmonitored.
+            # Checked by length; the token itself is never printed (SEC-1).
+            if ! jq -e '.dash0Token | type == "string" and length > 0' <<<"$config" >/dev/null; then
+              echo "/config.json: no Dash0 browser token, so browser monitoring is off (set the aks environment's DASH0_BROWSER_TOKEN secret)"
+              return 1
+            fi
             # Browser to nginx to discovery to Elasticsearch: a search through the public URL finds real sessions.
             if ! search=$(curl -sf --max-time 20 -X POST -H 'Content-Type: application/json' \
                 -d '{"query":"observability"}' "$PUBLIC_URL/api/v1/search") \
               || ! jq -e '.results | length >= 1' <<<"$search" >/dev/null; then
               echo "/api/v1/search: no 200 with results"; return 1
             fi
-            echo "$PUBLIC_URL serves the app, its config, and $(jq '.results | length' <<<"$search") search results"
+            echo "$PUBLIC_URL serves the app, its config with the browser token, and $(jq '.results | length' <<<"$search") search results"
           }
           deadline=$((SECONDS + 300))
-          until serves; do
-            if ((SECONDS > deadline)); then echo "::error::$PUBLIC_URL doesn't serve the app, its config and search"; exit 1; fi
+          until result=$(serves); do
+            echo "$result"
+            if ((SECONDS > deadline)); then echo "::error::$PUBLIC_URL$result"; exit 1; fi
             sleep 5
           done
+          echo "$result"
 
       - name: Install the Dash0 CLI
         uses: dash0hq/dash0-cli/.github/actions/setup@v1.1.0
