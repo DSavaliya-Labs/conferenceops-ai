@@ -132,11 +132,12 @@ would have matched nothing there. `dataset.yaml` switches them on. The Elasticse
 Python Elasticsearch client sets the stable `db.system.name` and `http.request.method` on its own spans
 (`elasticsearch/_otel.py`, checked in 9.5.1).
 
-Checked on the live `conferenceops` data on Nov 9, before these assets were first applied: the dataset still had
-upgrades off, and discovery-api's server spans carried `http_status_code` and `http_method`, with no
-`http_response_status_code`. **Discovery is rejecting searches** therefore counts a 5xx under either status-code
-label, so it no longer depends on the dataset setting. The other queries still use the stable names and need
-`dataset.yaml` applied.
+Checked on the live `conferenceops` data on Nov 9. Until these assets were first applied (about 20:50 UTC), the
+dataset had upgrades off: discovery-api's server spans carried `http_status_code` and `http_method`, and a matcher on
+`http_response_status_code` counted nothing. Since that apply, new server spans carry `http_response_status_code`
+and `http_request_method` instead: the upgrade renames the old keys rather than copying them. **Discovery is
+rejecting searches** counts a 5xx under either status-code label, so it works in both states. The other queries use
+the stable names and need `dataset.yaml` applied.
 
 Admission rejections carry their own span attribute, `conferenceops.error.code` = `DISCOVERY_CAPACITY_EXHAUSTED`
 (label `conferenceops_error_code` on `dash0.spans`; Dash0 turns span attributes into labels, as `http_user_agent`
