@@ -1,98 +1,71 @@
 <a class="skip-link" href="#main">Skip to main content</a>
 
-<header class="site-header">
-  <p class="brand">ConferenceOps AI</p>
-  <p class="event">KubeCon + CloudNativeCon North America 2026 · Salt Lake City</p>
-  <app-persona-switcher (changed)="onPersonaChanged()" />
+<header class="app-bar">
+  <div class="bar-row">
+    <button
+      #navToggle
+      type="button"
+      class="btn btn-icon nav-toggle"
+      [attr.aria-expanded]="navOpen()"
+      aria-controls="site-nav"
+      (click)="toggleNav()"
+    >
+      <app-icon [name]="navOpen() ? 'close' : 'menu'" [size]="22" />
+      <span class="visually-hidden">Menu</span>
+    </button>
+    <a class="brand" routerLink="/talks" (click)="onNavLink()">
+      <span class="brand-mark" aria-hidden="true">CO</span>
+      <span class="brand-name">ConferenceOps <span class="brand-ai">AI</span></span>
+    </a>
+    <app-search-bar class="bar-search" />
+    <app-persona-menu class="bar-persona" (changed)="onPersonaChanged()" />
+  </div>
 </header>
 
-<main id="main" tabindex="-1">
-  <h1>Find your next talk</h1>
-
-  <form class="ask" role="search" (submit)="submit($event)" novalidate>
-    <label for="ask-input">Ask about talks</label>
-    <div class="ask-row">
-      <input
-        id="ask-input"
-        #askInput
-        type="search"
-        name="query"
-        autocomplete="off"
-        [value]="query()"
-        (input)="onInput($event)"
-        [attr.aria-invalid]="validation() ? 'true' : null"
-        [attr.aria-describedby]="validation() ? 'ask-error' : 'ask-hint'"
-      />
-      <app-dictation-button (transcribed)="onDictated($event)" />
-      <button type="submit" [disabled]="status() === 'searching'">Search</button>
-    </div>
-    <p id="ask-hint" class="hint">Describe what you want to learn, in your own words.</p>
-    @if (validation()) {
-      <p id="ask-error" class="error" role="alert">{{ validation() }}</p>
-    }
-  </form>
-
-  <form class="where-next" (submit)="askWhereNext($event)" novalidate>
-    <div class="where-next-row">
-      <label for="where-next-window">When</label>
-      <select id="where-next-window" name="window" (change)="onWindowChange($event)">
-        <option value="today" [selected]="window() === 'today'">Rest of today</option>
-        <option value="tomorrow_morning" [selected]="window() === 'tomorrow_morning'">Tomorrow morning</option>
-        <option value="any" [selected]="window() === 'any'">Any time</option>
-      </select>
-      <button
-        id="where-next-button"
-        type="submit"
-        [disabled]="whereNextStatus() === 'loading'"
-        aria-describedby="where-next-hint"
-      >
-        Where should I go next?
-      </button>
-    </div>
-    <p id="where-next-hint" class="hint">
-      Talks that haven't started, picked from the persona's interests and CloudBridge history, with only the access
-      facts the event publishes.
+<div class="body">
+  <nav
+    id="site-nav"
+    class="site-nav"
+    [class.open]="navOpen()"
+    aria-label="Main"
+    (keydown)="onNavKeydown($event)"
+  >
+    <ul>
+      @for (link of links; track link.path) {
+        <li>
+          <a
+            [routerLink]="link.path"
+            routerLinkActive="active"
+            ariaCurrentWhenActive="page"
+            (click)="onNavLink()"
+          >
+            <app-icon [name]="link.icon" [size]="20" />
+            <span>{{ link.label }}</span>
+          </a>
+        </li>
+      }
+    </ul>
+    <p class="nav-note">
+      Two events: KubeCon + CloudNativeCon NA 2026, real and current, and CloudBridge Summit, a
+      fictional archive.
     </p>
-    @if (whereNextValidation()) {
-      <p class="error" role="alert">{{ whereNextValidation() }}</p>
-    }
-  </form>
+  </nav>
 
-  <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
-
-  @if (whereNextStatus() === 'error') {
-    <p class="error" role="alert">Suggestions aren't available right now. Please try again in a moment.</p>
-  }
-
-  <app-where-next-cards [response]="whereNext()" />
-
-  @if (status() === 'error') {
-    <p class="error" role="alert">Search isn't available right now. Please try again in a moment.</p>
-  }
-
-  @if (status() === 'done' && results().length > 0) {
-    <section aria-labelledby="results-heading">
-      <h2 id="results-heading">Talks that match</h2>
-      <ol class="results">
-        @for (result of results(); track result.id) {
-          <li>
-            <h3>{{ result.title }}</h3>
-            <p>{{ result.event }}@if (result.room) { · {{ result.room }} }@if (result.level) { · {{ result.level }} }</p>
-          </li>
-        }
-      </ol>
-    </section>
-  }
-
-  <app-ask-answer [question]="asked()" />
-
-  <router-outlet />
-</main>
+  <main id="main" tabindex="-1">
+    <router-outlet />
+  </main>
+</div>
 
 <footer class="site-footer">
   <p>
-    KubeCon + CloudNativeCon NA 2026 sessions come from the event's public schedule. CloudBridge Summit is a fictional
-    demo event.
+    KubeCon + CloudNativeCon NA 2026 sessions come from the event's public schedule. CloudBridge
+    Summit is a fictional demo event. The personas are fictional, and choosing one is a demo switch,
+    not a sign-in.
   </p>
-  <p>AI use: answers and explanations come from OpenAI models and are checked against the schedule before you see them.</p>
+  <p>
+    AI use: answers and explanations come from OpenAI models and are checked against the schedule
+    before you see them. Accessibility facts are shown only as the event publishes them, with their
+    source.
+    <a routerLink="/operations" (click)="onNavLink()">How this platform runs</a>
+  </p>
 </footer>

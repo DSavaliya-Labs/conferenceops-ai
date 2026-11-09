@@ -1,8 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
 import { App } from './app';
+import { routes } from './app.routes';
 import { DictationButton } from './dictation-button';
 
 const SPOKEN = 'kubernetes security for beginners';
@@ -47,7 +49,9 @@ function fakeMicrophone() {
   return { track, stream };
 }
 
-function installMediaApis(getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>): void {
+function installMediaApis(
+  getUserMedia: (constraints: MediaStreamConstraints) => Promise<MediaStream>,
+): void {
   Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia }, configurable: true });
   vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
 }
@@ -57,14 +61,22 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 function render() {
   TestBed.configureTestingModule({
     imports: [App],
-    providers: [provideHttpClient(), provideHttpClientTesting()],
+    providers: [provideRouter(routes), provideHttpClient(), provideHttpClientTesting()],
   });
   const fixture = TestBed.createComponent(App);
   fixture.detectChanges();
-  return { fixture, el: fixture.nativeElement as HTMLElement, http: TestBed.inject(HttpTestingController) };
+  return {
+    fixture,
+    el: fixture.nativeElement as HTMLElement,
+    http: TestBed.inject(HttpTestingController),
+  };
 }
 
-async function click(fixture: ComponentFixture<unknown>, el: HTMLElement, selector: string): Promise<void> {
+async function click(
+  fixture: ComponentFixture<unknown>,
+  el: HTMLElement,
+  selector: string,
+): Promise<void> {
   const button = el.querySelector<HTMLButtonElement>(selector);
   expect(button, selector).not.toBeNull();
   button!.click();
@@ -80,11 +92,15 @@ function askInput(el: HTMLElement): HTMLInputElement {
   return el.querySelector<HTMLInputElement>('#ask-input')!;
 }
 
-async function typeAndSearch(fixture: ComponentFixture<unknown>, el: HTMLElement, text: string): Promise<void> {
+async function typeAndSearch(
+  fixture: ComponentFixture<unknown>,
+  el: HTMLElement,
+  text: string,
+): Promise<void> {
   const input = askInput(el);
   input.value = text;
   input.dispatchEvent(new Event('input'));
-  el.querySelector('form.ask')!.dispatchEvent(new Event('submit'));
+  el.querySelector('form[role="search"]')!.dispatchEvent(new Event('submit', { cancelable: true }));
   fixture.detectChanges();
   await fixture.whenStable();
 }
@@ -98,7 +114,7 @@ afterEach(() => {
 describe('Dictation (the spoken half of the Ask bar)', () => {
   it('is a labeled button in the Ask row that never submits the form (A11Y-1)', () => {
     const { el } = render();
-    const mic = el.querySelector<HTMLButtonElement>('.ask-row button.mic')!;
+    const mic = el.querySelector<HTMLButtonElement>('form[role="search"] .field button.mic')!;
     expect(mic.textContent).toContain('Dictate');
     expect(mic.getAttribute('type')).toBe('button');
     expect(mic.disabled).toBe(false);
@@ -121,7 +137,9 @@ describe('Dictation (the spoken half of the Ask bar)', () => {
   });
 
   it('says so when microphone permission is denied, and keeps what was typed', async () => {
-    installMediaApis(() => Promise.reject(new DOMException('Permission denied', 'NotAllowedError')));
+    installMediaApis(() =>
+      Promise.reject(new DOMException('Permission denied', 'NotAllowedError')),
+    );
     const { fixture, el, http } = render();
     askInput(el).value = 'service mesh';
     askInput(el).dispatchEvent(new Event('input'));
@@ -234,7 +252,9 @@ describe('Dictation (the spoken half of the Ask bar)', () => {
 
     await click(fixture, el, 'button.mic');
     await click(fixture, el, 'button.mic');
-    http.expectOne('/api/v1/dictation').flush('down', { status: 503, statusText: 'Service Unavailable' });
+    http
+      .expectOne('/api/v1/dictation')
+      .flush('down', { status: 503, statusText: 'Service Unavailable' });
     fixture.detectChanges();
 
     expect(status(el)).toContain("Transcription isn't available right now");

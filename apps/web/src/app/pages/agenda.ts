@@ -1,0 +1,177 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
+import { Subscription } from 'rxjs';
+
+import { Icon } from '../icons';
+import { PersonaService } from '../personas';
+import { AgendaEntry, AgendaResponse, PortalService } from '../portal';
+import { SessionCard, SessionSummary } from '../session-card';
+
+type AgendaStatus = 'none' | 'loading' | 'done' | 'error' | 'missing';
+
+/** My agenda: the persona's bookmarks and the talks she attended, from core-api behind X-Demo-Profile-ID
+ *  (AUTHZ-1). Switching persona reloads; nothing from the last persona lingers. */
+@Component({
+  selector: 'app-agenda',
+  imports: [Icon, SessionCard],
+  template: `
+    <div class="page">
+      <header class="page-header">
+        <h1>My agenda</h1>
+        <p class="lead">
+          Bookmarked talks and the ones attended at CloudBridge Summit, for the persona you are
+          viewing as. A bookmark is a personal plan: it never reserves a seat.
+        </p>
+      </header>
+
+      <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
+
+      @switch (status()) {
+        @case ('none') {
+          <section class="card empty" aria-labelledby="pick-heading">
+            <h2 id="pick-heading">Choose a persona to see an agenda</h2>
+            <p class="muted">
+              Pick one of the eight fictional demo personas in the account menu at the top right of
+              the page.
+            </p>
+          </section>
+        }
+        @case ('loading') {
+          <p class="muted">Loading the agenda…</p>
+          <ol class="skeletons" aria-hidden="true">
+            <li class="skeleton"></li>
+            <li class="skeleton"></li>
+          </ol>
+        }
+        @case ('error') {
+          <div class="callout callout-danger" role="alert">
+            <p>
+              <strong>The agenda isn't available right now.</strong> Please try again in a moment.
+            </p>
+            <button type="button" class="btn btn-outline" (click)="load()">
+              <app-icon name="refresh" [size]="18" />
+              Try again
+            </button>
+          </div>
+        }
+        @case ('missing') {
+          <div class="callout callout-warn" role="alert">
+            <p>
+              This persona isn't on the server right now. Choose another one in the account menu.
+            </p>
+          </div>
+        }
+        @case ('done') {
+          @if (agenda(); as a) {
+            <section class="group" aria-labelledby="bookmarked-heading">
+              <h2 id="bookmarked-heading">
+                Bookmarked <span class="count">{{ a.bookmarked.length }}</span>
+              </h2>
+              @if (a.bookmarked.length === 0) {
+                <p class="muted">{{ a.displayName }} hasn't bookmarked a talk yet.</p>
+              } @else {
+                <ol class="list bookmarked">
+                  @for (entry of a.bookmarked; track entry.sessionId) {
+                    <li><app-session-card [session]="summary(entry)" /></li>
+                  }
+                </ol>
+              }
+            </section>
+            <section class="group" aria-labelledby="attended-heading">
+              <h2 id="attended-heading">
+                Attended <span class="count">{{ a.attended.length }}</span>
+              </h2>
+              @if (a.attended.length === 0) {
+                <p class="muted">No attended talks on record for {{ a.displayName }}.</p>
+              } @else {
+                <ol class="list attended">
+                  @for (entry of a.attended; track entry.sessionId) {
+                    <li><app-session-card [session]="summary(entry)" /></li>
+                  }
+                </ol>
+              }
+            </section>
+          }
+        }
+      }
+    </div>
+  `,
+  styles: `
+    .group {
+      display: grid;
+      gap: var(--space-3);
+    }
+    .count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.75rem;
+      height: 1.75rem;
+      padding: 0 0.5rem;
+      margin-left: var(--space-2);
+      border-radius: var(--radius-full);
+      background: var(--surface-2);
+      color: var(--ink-2);
+      font-size: var(--text-sm);
+      font-variant-numeric: tabular-nums;
+      vertical-align: middle;
+    }
+  `,
+})
+export class AgendaPage {
+  protected readonly personas = inject(PersonaService);
+  private readonly portal = inject(PortalService);
+  private request?: Subscription;
+
+  protected readonly status = signal<AgendaStatus>('none');
+  protected readonly agenda = signal<AgendaResponse | null>(null);
+
+  protected readonly announcement = computed(() => {
+    const a = this.agenda();
+    switch (this.status()) {
+      case 'loading':
+        return 'Loading the agenda…';
+      case 'done':
+        return a
+          ? `Agenda for ${a.displayName}: ${a.bookmarked.length} bookmarked, ${a.attended.length} attended.`
+          : '';
+      default:
+        return '';
+    }
+  });
+
+  constructor() {
+    // A persona switch reloads; the last persona's agenda is dropped first (PLAN §4.1).
+    effect(() => {
+      const id = this.personas.selectedId();
+      untracked(() => this.load(id));
+    });
+    inject(DestroyRef).onDestroy(() => this.request?.unsubscribe());
+  }
+
+  protected load(id: string = this.personas.selectedId()): void {
+    this.request?.unsubscribe();
+    this.agenda.set(null);
+    if (!id) {
+      this.status.set('none');
+      return;
+    }
+    this.status.set('loading');
+    this.request = this.portal.agenda(id).subscribe({
+      next: (agenda) => {
+        this.agenda.set(agenda);
+        this.status.set('done');
+      },
+      error: (error: unknown) => {
+        this.agenda.set(null);
+        this.status.set(
+          error instanceof HttpErrorResponse && error.status === 404 ? 'missing' : 'error',
+        );
+      },
+    });
+  }
+
+  protected summary(entry: AgendaEntry): SessionSummary {
+    return { ...entry, id: entry.sessionId };
+  }
+}
