@@ -64,7 +64,9 @@ import { WhereNextService } from './where-next';
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: var(--space-2);
+      /* No row gap: the dictation status line wraps to a second row that is empty until it has something to say,
+         and a row gap would add space under the buttons (6px above them, 14px below). */
+      gap: 0 var(--space-2);
       min-height: 3rem;
       padding: 0.25rem 0.25rem 0.25rem var(--space-3);
       border: 1.5px solid var(--line-strong);

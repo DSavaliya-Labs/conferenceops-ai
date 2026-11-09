@@ -166,6 +166,7 @@ function describeMicrophoneError(error: unknown): string {
     }
     .status.shown {
       height: auto;
+      padding-top: var(--space-2);
       padding-bottom: var(--space-1);
     }
     .status.error {
