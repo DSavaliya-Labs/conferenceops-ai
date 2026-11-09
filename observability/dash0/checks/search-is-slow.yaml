@@ -1,4 +1,5 @@
-# Attendees wait too long for search results. 1.5 s is the p95 target of the recovery acceptance (PLAN §15.4).
+# Attendees wait too long for search results. 1.5 s is also the p95 an incident fix must reach before recovery counts
+# (the recovery checks in ../automations/discovery-capacity-fix.prompt.md).
 # Degraded only: slow search still answers, so this check does not start the Agent0 automation.
 apiVersion: dash0.com/v1alpha1
 kind: CheckRule

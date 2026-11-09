@@ -4,10 +4,15 @@
 #     so a re-run updates them in place instead of creating copies.
 #   - the automations API (`dash0 apply` has no automation kind): the Agent0 automation, upserted by its
 #     `dash0.com/origin` label, with its prompt read from the .prompt.md file next to its definition.
+# The automation goes out disarmed (spec.enabled false) unless --arm is given, so a routine re-apply never arms it:
+# armed, it answers a failure of the rejection check with an incident pull request that merges without a human.
 # Then it reads every asset back from Dash0 and prints its name and id.
-#   Usage: scripts/dash0-apply.sh [--dry-run]     --dry-run validates everything and changes nothing.
+#   Usage: scripts/dash0-apply.sh [--dry-run] [--arm]
+#     --dry-run  validates everything and changes nothing.
+#     --arm      enables the Agent0 automation. Without it, every run sends it disabled.
 #   Needs DASH0_API_URL and DASH0_AUTH_TOKEN in the environment (. ~/.config/conferenceops/env.sh), the dash0 CLI
 #   (1.20 or later) and jq. The CLI reads the token from the environment; this script never prints it.
+#   Tests: scripts/tests/dash0-apply.test.sh
 set -euo pipefail
 
 DATASET="conferenceops"
@@ -15,6 +20,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ASSETS="$ROOT/observability/dash0"
 AUTOMATION="$ASSETS/automations/discovery-capacity-fix"  # .json (definition) and .prompt.md (prompt)
 TRIGGER_RULE="$ASSETS/checks/discovery-rejecting-searches.yaml"
+USAGE="usage: scripts/dash0-apply.sh [--dry-run] [--arm]"
 
 die() {
   echo "dash0-apply: $*" >&2
@@ -48,12 +54,18 @@ dashboard_id() {  # dashboard_id <Dashboard file>: its metadata.dash0Extensions.
   echo "$id"
 }
 
-automation_body() {  # automation_body <trigger rule id>: the automation definition with its prompt inserted
-  # An automation without a rule list runs for every failed check, so insist on exactly the trigger rule.
-  jq -e --arg rule "$1" '.spec.triggers[0].spec.checkRuleIDs == [$rule]' "$AUTOMATION.json" >/dev/null \
-    || die "$AUTOMATION.json must trigger on check rule $1, the id in $TRIGGER_RULE"
+automation_body() {  # automation_body <trigger rule id> <true|false>: the definition, with its prompt and spec.enabled
+  # The automation runs for every trigger it lists, and a failed-check trigger without a rule list runs for every
+  # failed check. So insist on exactly one trigger: a new failure of the rejection rule, and of no other rule.
+  jq -e --arg rule "$1" '
+      (.spec.triggers | length) == 1
+      and .spec.triggers[0].kind == "failed_check.new"
+      and .spec.triggers[0].spec.checkRuleIDs == [$rule]' "$AUTOMATION.json" >/dev/null \
+    || die "$AUTOMATION.json must have exactly one trigger: failed_check.new on check rule $1 only," \
+      "the id in $TRIGGER_RULE"
   [[ -s "$AUTOMATION.prompt.md" ]] || die "$AUTOMATION.prompt.md is missing or empty"
-  jq --rawfile prompt "$AUTOMATION.prompt.md" '.spec.prompt.user = $prompt' "$AUTOMATION.json"
+  jq --rawfile prompt "$AUTOMATION.prompt.md" --argjson enabled "$2" \
+    '.spec.prompt.user = $prompt | .spec.enabled = $enabled' "$AUTOMATION.json"
 }
 
 report() {  # report <automation origin>: read each asset back from Dash0 and print its name and id
@@ -65,10 +77,11 @@ report() {  # report <automation origin>: read each asset back from Dash0 and pr
     id=$(dashboard_id "$file")
     api GET "/api/dashboards/$id" | jq -r --arg id "$id" '"Dashboard \"\(.spec.display.name)\" (\($id))"'
   done
+  # A check rule without `enabled` is enabled. Not `.enabled // true`: jq's `//` replaces false as well as null.
   for file in "$ASSETS"/checks/*.yaml; do
     id=$(rule_id "$file")
-    api GET "/api/alerting/check-rules/$id" \
-      | jq -r --arg id "$id" '"Check rule \"\(.name)\" (\($id)), enabled: \(.enabled // true)"'
+    api GET "/api/alerting/check-rules/$id" | jq -r --arg id "$id" \
+      '"Check rule \"\(.name)\" (\($id)), enabled: \(if .enabled == null then true else .enabled end)"'
   done
   api GET "/api/agentic-workflows/$origin" \
     | jq -r '"Agent0 automation \"\(.spec.display.name)\" (\(.metadata.labels["dash0.com/id"])), enabled: \(.spec.enabled),"
@@ -76,34 +89,48 @@ report() {  # report <automation origin>: read each asset back from Dash0 and pr
 }
 
 main() {
-  local dry_run=false
-  case "${1:-}" in
-    "") ;;
-    --dry-run) dry_run=true ;;
-    *) die "usage: scripts/dash0-apply.sh [--dry-run]" ;;
-  esac
+  local dry_run=false armed=false arg
+  for arg in "$@"; do
+    case "$arg" in
+      --dry-run) dry_run=true ;;
+      --arm) armed=true ;;
+      *) die "$USAGE" ;;
+    esac
+  done
   require
 
-  local rule body origin prompt_length
+  local rule body origin state response prompt_length
   rule=$(rule_id "$TRIGGER_RULE")
-  body=$(automation_body "$rule")
+  body=$(automation_body "$rule" "$armed")
   origin=$(jq -r '.metadata.labels["dash0.com/origin"] // empty' <<<"$body")
   [[ -n "$origin" ]] || die "$AUTOMATION.json has no dash0.com/origin label"
+  if $armed; then state=armed; else state=disarmed; fi
 
   # -X: the CLI treats Dash0Dataset documents (dataset.yaml) and `dash0 api` as experimental.
   if $dry_run; then
     dash0 -X apply -f "$ASSETS" --dataset "$DATASET" --dry-run
     prompt_length=$(jq -r '.spec.prompt.user | length' <<<"$body")
-    echo "Dry run: would upsert Agent0 automation $origin with a $prompt_length-character prompt"
+    echo "Dry run: would upsert Agent0 automation $origin $state (spec.enabled $armed)" \
+      "with a $prompt_length-character prompt"
     return 0
   fi
 
   dash0 -X apply -f "$ASSETS" --dataset "$DATASET"
-  api PUT "/api/agentic-workflows/$origin" -f - <<<"$body" \
-    | jq -r '"Agent0 automation \"\(.spec.display.name)\" (\(.metadata.labels["dash0.com/id"])) upserted"'
+  response=$(api PUT "/api/agentic-workflows/$origin" -f - <<<"$body")
+  jq -e --argjson enabled "$armed" '.spec.enabled == $enabled' <<<"$response" >/dev/null \
+    || die "Dash0 did not store the automation $state: its spec.enabled is $(jq -c '.spec.enabled' <<<"$response")"
+  jq -r --arg state "$state" <<<"$response" \
+    '"Agent0 automation \"\(.spec.display.name)\" (\(.metadata.labels["dash0.com/id"])) upserted, \($state)"'
   echo
   echo "In Dash0 now:"
   report "$origin"
+  echo
+  if $armed; then
+    echo "ARMED: a new failure of \"Discovery is rejecting searches\" starts Agent0, and its incident pull request can"
+    echo "merge and deploy without a human. Disarm it when the incident run is over: scripts/dash0-apply.sh"
+  else
+    echo "The Agent0 automation is disarmed. Arm it right before the incident run: scripts/dash0-apply.sh --arm"
+  fi
 }
 
 main "$@"; exit

@@ -71,7 +71,7 @@ spec:
               A **503** from discovery-api means its per-pod admission control is full (code
               `DISCOVERY_CAPACITY_EXHAUSTED`) or a search failed upstream (Elasticsearch, OpenAI).
               **Discovery is rejecting searches** fails above a 10% 5xx share over one minute with at least 100
-              requests, and starts the Agent0 automation *ConferenceOps: fix discovery capacity*.
+              requests, and starts the Agent0 automation *ConferenceOps: fix discovery capacity* while it is armed.
               **Search is slow** is degraded when the p95 of POST /api/v1/search stays above 1.5 s for 2 minutes.
 
     discoveryRequests:
@@ -185,7 +185,7 @@ spec:
           name: Discovery traffic per pod
           description: >-
             Requests per second that each discovery-api pod served, and its 503s. After a scale-out, every pod
-            should carry traffic (PLAN §15.4).
+            should carry traffic before a recovery counts.
         plugin:
           kind: TimeSeriesChart
           spec:
