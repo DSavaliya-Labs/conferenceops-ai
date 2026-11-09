@@ -1,5 +1,5 @@
-# Schema migrations run as a Job after every install or upgrade, before the deploy is reported done. Additive MVP
-# migrations only, so the previous app version keeps working while this runs (PLAN §14.5).
+# Schema migrations run as a Job after install and before every upgrade, so new pods never start against an old
+# schema. Additive MVP migrations only, so the previous app version keeps working while this runs (PLAN §14.5).
 apiVersion: batch/v1
 kind: Job
 metadata:
