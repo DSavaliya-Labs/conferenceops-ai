@@ -4,8 +4,8 @@
 # Counts discovery-api server spans (Dash0's dash0.spans metric), so it needs no application metric. A 503 is either
 # the per-pod admission control turning work away (code DISCOVERY_CAPACITY_EXHAUSTED) or a failed search upstream;
 # the check fires on both, and the automation tells them apart. Dash0 evaluates a check at most once a minute, so
-# the window is one minute; `for: 1m` asks for two failing evaluations in a row (PLAN §15.2), and the top-level
-# `and` keeps the check inactive below 100 requests in the window.
+# the window is one minute; `for: 1m` asks for two failing evaluations in a row, so one bad minute doesn't start the
+# automation, and the top-level `and` keeps the check inactive below 100 requests in the window.
 apiVersion: dash0.com/v1alpha1
 kind: CheckRule
 id: 7f910f6b-1c6a-461f-9018-fbfa66498555
@@ -31,7 +31,7 @@ annotations:
     More than 10% of discovery-api's server requests returned a 5xx over one minute, with at least 100 requests.
     Attendees' searches and "where should I go next?" answers are failing. A 503 with code
     DISCOVERY_CAPACITY_EXHAUSTED means the per-pod admission control is full (capacity); other 5xx point to
-    Elasticsearch, OpenAI or the service itself. The Agent0 automation "ConferenceOps: fix discovery capacity"
-    investigates and may open an incident pull request that changes only the discovery replicas or resources
-    (OPS-1). Never raise this threshold to make the check pass.
+    Elasticsearch, OpenAI or the service itself. While it is armed, the Agent0 automation "ConferenceOps: fix
+    discovery capacity" investigates and may open an incident pull request that changes only the discovery
+    replicas or resources (OPS-1). Never raise this threshold to make the check pass.
 enabled: true

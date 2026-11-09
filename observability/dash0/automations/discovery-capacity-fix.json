@@ -7,10 +7,10 @@
     }
   },
   "spec": {
-    "enabled": true,
+    "enabled": false,
     "display": {
       "name": "ConferenceOps: fix discovery capacity",
-      "description": "Runs when the check \"Discovery is rejecting searches\" fails. Investigates discovery-api with telemetry and, only when discovery capacity is the bottleneck, opens a pull request in DSavaliya-Labs/conferenceops-ai that changes only the discovery replicas or resources in deploy/env/aks/values.yaml (OPS-1). Otherwise it reports the mismatch for a human. Managed as code: observability/dash0/automations/ in that repository; scripts/dash0-apply.sh inserts the prompt from discovery-capacity-fix.prompt.md."
+      "description": "Runs when the check \"Discovery is rejecting searches\" fails. Investigates discovery-api with telemetry and, only when discovery capacity is the bottleneck, opens a pull request in DSavaliya-Labs/conferenceops-ai that changes only the discovery replicas or resources in deploy/env/aks/values.yaml (OPS-1). Otherwise it reports the mismatch for a human. Disabled unless armed for an incident run with scripts/dash0-apply.sh --arm. Managed as code: observability/dash0/automations/ in that repository; scripts/dash0-apply.sh inserts the prompt from discovery-capacity-fix.prompt.md."
     },
     "triggers": [
       {
@@ -32,8 +32,7 @@
       },
       "creditBudgetWindow": {
         "credits": 50,
-        "window": "1d",
-        "warningThreshold": 75
+        "window": "1d"
       }
     },
     "sandbox": {
