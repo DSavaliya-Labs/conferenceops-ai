@@ -1,13 +1,34 @@
 import copy
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.sql import operators
 
 from conferenceops.indexing import DIMENSIONS, MAPPING, embedding_text
-from conferenceops.kubecon import ACCESS_FACTS, ACCESS_PAGE, SLUG, import_kubecon, parse_feed, venue_instant
-from conferenceops.models import AccessFact, Conference, Level, OutboxJob, Room, Session, SessionSpeaker, Speaker
+from conferenceops.kubecon import (
+    ACCESS_FACTS,
+    ACCESS_PAGE,
+    MAX_REMOVED_SESSIONS,
+    SLUG,
+    import_kubecon,
+    parse_feed,
+    published_speakers,
+    venue_instant,
+)
+from conferenceops.models import (
+    AccessFact,
+    AccessFactKind,
+    Conference,
+    Level,
+    OutboxJob,
+    Room,
+    Session,
+    SessionSpeaker,
+    Speaker,
+)
 
 FEED = {
     "categories": [
@@ -83,6 +104,37 @@ def test_every_access_fact_comes_from_the_official_page_and_none_claims_step_fre
     assert any("wordly" in text.lower() for _, text, _ in ACCESS_FACTS)
 
 
+def test_the_mobility_rental_fact_names_the_vendor_and_promises_no_availability():
+    # ACCESS-1: the page says "you can rent them from Mobility City. Please contact them directly for rates and
+    # availability." It doesn't say equipment is available.
+    [text] = [text for kind, text, _ in ACCESS_FACTS if kind is AccessFactKind.MOBILITY_RENTAL]
+    assert "Mobility City" in text
+    assert "contact them directly for rates and availability" in text
+    assert "is available" not in text
+
+
+def test_a_speaker_name_display_override_keeps_only_the_speakers_it_names():
+    # SPEAKER-1: "Welcome + Opening Remarks" (1302801) links six speakers, and the schedule names two.
+    names = {"a": "Jonathan Bryce", "b": "Chris Aniszczyk", "c": "Rita Zhang", "d": "Ann Lee"}
+    assert published_speakers(["a", "b", "c"], names, "Jonathan Bryce, Chris Aniszczyk") == ["a", "b"]
+    assert published_speakers(["a", "b", "c"], names, None) == ["a", "b", "c"]  # no override: the feed's links
+    assert published_speakers(["a"], names, "jonathan bryce") == ["a"]  # case doesn't matter
+    assert published_speakers(["d"], names, "Joann Leeds") == []  # whole names only
+
+
+def test_an_override_naming_none_of_the_linked_speakers_links_nobody():
+    # 1370908 links Mike Swift, but its override reads "Peter Frank", who isn't a speaker in the feed. Nobody is
+    # linked from the override text alone, and Mike Swift isn't shown for a session the schedule gives to someone else.
+    feed = copy.deepcopy(FEED)
+    feed["questions"].append({"id": 12, "question": "Speaker Name Display"})
+    feed["sessions"][0]["questionAnswers"].append({"questionId": 12, "answerValue": "Peter Frank"})
+
+    talk, _ = parse_feed(feed).sessions
+
+    assert talk.speaker_external_ids == []
+    assert talk.materials == {"slides": "https://example.org/slides.pdf"}  # the other answers still count
+
+
 def test_search_documents_carry_a_1536_dimension_cosine_vector_and_no_private_fields():
     props = MAPPING["properties"]
     assert props["embedding"] == {"type": "dense_vector", "dims": DIMENSIONS, "index": True, "similarity": "cosine"}
@@ -118,8 +170,9 @@ class _Scalars:
 
 
 class _ImportDb:
-    """Just enough of an ORM session for import_kubecon and the catalog's upsert, kept in memory: equality WHERE
-    clauses, deletes, and INSERT ... ON CONFLICT (conference_id, external_id) DO NOTHING RETURNING id."""
+    """Just enough of an ORM session for import_kubecon and the catalog's upsert, kept in memory: equality and IN
+    WHERE clauses, column selects, deletes, and INSERT ... ON CONFLICT (conference_id, external_id) DO NOTHING
+    RETURNING id. Row locks and the identity map aren't modeled: the integration tests cover them."""
 
     def __init__(self, conference, rooms=(), speakers=(), sessions=(), session_speakers=()):
         self.conference = conference
@@ -142,10 +195,12 @@ class _ImportDb:
         }[model]
 
     @staticmethod
-    def _where(rows, statement):
-        return [
-            row for row in rows if all(getattr(row, c.left.key) == c.right.value for c in statement._where_criteria)
-        ]
+    def _matches(row, criterion) -> bool:
+        actual, expected = getattr(row, criterion.left.key), criterion.right.value
+        return actual in expected if criterion.operator is operators.in_op else actual == expected
+
+    def _where(self, rows, statement):
+        return [row for row in rows if all(self._matches(row, c) for c in statement._where_criteria)]
 
     def scalars(self, statement):
         return _Scalars(self._where(self._table(statement.column_descriptions[0]["entity"]), statement))
@@ -157,6 +212,10 @@ class _ImportDb:
         self._table(type(row)).remove(row)
 
     def execute(self, statement):
+        if statement.is_select:  # a column select: rows with just those attributes
+            columns = [c["name"] for c in statement.column_descriptions]
+            rows = self._where(self._table(statement.column_descriptions[0]["entity"]), statement)
+            return _Scalars(SimpleNamespace(**{name: getattr(row, name) for name in columns}) for row in rows)
         model = statement.entity_description["entity"]
         if statement.is_insert:
             values = statement.compile(dialect=postgresql.dialect()).params
@@ -224,7 +283,7 @@ def test_a_first_import_stores_the_feed_and_a_reimport_changes_nothing():
 
     first = import_kubecon(db, FEED)
 
-    assert first == {"sessions": 2, "changed": 2, "removed": 0, "rooms": 1}
+    assert first == {"sessions": 2, "changed": 2, "reindexed": 0, "removed": 0, "rooms": 1}
     talk = next(row for row in db.sessions if row.external_id == "100")
     assert (talk.title, talk.revision) == ("Tracing Everything", 1)
     assert talk.starts_at == venue_instant("2026-11-10T10:30:00")
@@ -238,7 +297,7 @@ def test_a_first_import_stores_the_feed_and_a_reimport_changes_nothing():
 
     again = import_kubecon(db, copy.deepcopy(FEED))
 
-    assert again == {"sessions": 2, "changed": 0, "removed": 0, "rooms": 1}
+    assert again == {"sessions": 2, "changed": 0, "reindexed": 0, "removed": 0, "rooms": 1}
     assert len(db.outbox) == 2  # an unchanged session enqueues nothing
     assert talk.revision == 1
     assert len(db.access_facts) == len(ACCESS_FACTS)  # replaced, not duplicated
@@ -273,3 +332,64 @@ def test_an_empty_feed_is_refused_and_deletes_nothing():
 
     assert db.sessions == [session]
     assert db.outbox == []
+
+
+def _stored_sessions(conference_id, count):
+    return [
+        Session(id=uuid.uuid4(), conference_id=conference_id, external_id=f"9{n:03}", revision=1) for n in range(count)
+    ]
+
+
+def test_a_feed_that_would_remove_too_many_sessions_is_refused_and_changes_nothing():
+    # A partial feed (one day's sessions, say) must not delete the rest of the schedule, and with it attendees' agenda
+    # items (ON DELETE CASCADE).
+    conference_id = uuid.uuid4()
+    stored = _stored_sessions(conference_id, MAX_REMOVED_SESSIONS + 1)
+    db = _ImportDb(Conference(id=conference_id, slug=SLUG), sessions=list(stored))
+
+    with pytest.raises(ValueError, match=f"would remove {MAX_REMOVED_SESSIONS + 1} of {MAX_REMOVED_SESSIONS + 1}"):
+        import_kubecon(db, FEED)
+
+    assert db.sessions == stored
+    assert (db.outbox, db.rooms, db.speakers) == ([], [], [])
+
+
+def test_removals_up_to_the_limit_go_through_and_a_deliberate_cleanup_can_raise_it():
+    conference_id = uuid.uuid4()
+    db = _ImportDb(Conference(id=conference_id, slug=SLUG), sessions=_stored_sessions(conference_id, 3))
+    assert import_kubecon(db, FEED, max_removed=3)["removed"] == 3
+
+    db = _ImportDb(Conference(id=conference_id, slug=SLUG), sessions=_stored_sessions(conference_id, 4))
+    with pytest.raises(ValueError, match="more than 3"):
+        import_kubecon(db, FEED, max_removed=3)
+
+
+def test_renaming_a_room_reindexes_its_unchanged_sessions_at_a_new_revision():
+    # DATA-1: the room's name is in each of its sessions' search documents, which would otherwise keep the old name.
+    db = _ImportDb(Conference(id=uuid.uuid4(), slug=SLUG))
+    import_kubecon(db, FEED)
+    talk = next(row for row in db.sessions if row.external_id == "100")
+    feed = copy.deepcopy(FEED)
+    feed["rooms"][0]["name"] = "Salt Palace | Level 1 | Hall DE (renamed)"
+
+    counts = import_kubecon(db, feed)
+
+    assert db.rooms[0].name == "Salt Palace | Level 1 | Hall DE (renamed)"
+    assert (counts["changed"], counts["reindexed"]) == (0, 1)
+    assert talk.revision == 2
+    assert [(job.entity_id, job.entity_revision, job.kind) for job in db.outbox[2:]] == [(talk.id, 2, "index")]
+
+
+def test_a_session_that_changed_in_a_renamed_room_gets_one_new_revision():
+    db = _ImportDb(Conference(id=uuid.uuid4(), slug=SLUG))
+    import_kubecon(db, FEED)
+    talk = next(row for row in db.sessions if row.external_id == "100")
+    feed = copy.deepcopy(FEED)
+    feed["rooms"][0]["name"] = "Salt Palace | Level 1 | Hall DE (renamed)"
+    feed["sessions"][0]["title"] = "Tracing Everything, Revised"
+
+    counts = import_kubecon(db, feed)
+
+    assert (counts["changed"], counts["reindexed"]) == (1, 0)
+    assert talk.revision == 2
+    assert [(job.entity_id, job.entity_revision) for job in db.outbox[2:]] == [(talk.id, 2)]
