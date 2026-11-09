@@ -122,15 +122,17 @@ expect_markers() {  # expect_markers <status> <severity> <body>: exactly one eve
 # --- Tests ----------------------------------------------------------------------------------------------------------
 
 test_rejects_bad_arguments() {
-  local name args
-  for name in "no-arguments:" "no-tag:succeeded" "empty-tag:succeeded|" "unknown-status:success|$TAG" \
-    "extra-argument:failed|$TAG|now"; do
-    begin "${name%%:*}"
-    args="${name#*:}"
-    if [[ -z "$args" ]]; then run; else
-      # shellcheck disable=SC2086  # the |-separated arguments split on purpose; an empty one must stay empty
-      IFS='|' run $args
-    fi
+  local -a cases=("no-arguments" "no-tag" "empty-tag" "unknown-status" "extra-argument")
+  local name
+  for name in "${cases[@]}"; do
+    begin "$name"
+    case "$name" in
+      no-arguments) run ;;
+      no-tag) run succeeded ;;
+      empty-tag) run succeeded "" ;;
+      unknown-status) run success "$TAG" ;;
+      extra-argument) run failed "$TAG" now ;;
+    esac
     expect_rc 1
     contains "$CASE/stderr" "usage: scripts/dash0-deploy-marker.sh <succeeded|failed> <tag>"
     is_empty "$FAKE_DASH0_LOG"
