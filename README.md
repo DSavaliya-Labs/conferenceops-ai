@@ -11,25 +11,28 @@ Elasticsearch search, Dash0 observability with Agent0, Radar's AI SRE, and Gitar
 
 <img src="docs/public-url-qr.svg" alt="QR code for http://conferenceops-ai.westus3.cloudapp.azure.com" width="160">
 
-**Public URL: <http://conferenceops-ai.westus3.cloudapp.azure.com>** (AKS, plain HTTP). At the latest check,
-`/config.json` reported version `5179c0115fe0a99ee7880273d7b05bb4bbd70305`, the merge of
-[#39](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/39), deployed successfully by
-[run 42706652771](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706652771), started at 21:52:48 UTC:
+**Public URL: <http://conferenceops-ai.westus3.cloudapp.azure.com>** (AKS, plain HTTP). It serves the version
+`38aefeb`, the merge of [#46](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/46), deployed by
+[run 42707593311](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707593311) at 21:59 (later merges
+deploy in turn). Checked by hand at 22:03 UTC:
 
 | On the public URL | Evidence |
 |---|---|
-| The attendee app (`GET /`) and its `/config.json` | dataset `conferenceops`, environment `aks`, version `5179c011…` |
+| The attendee app (`GET /`) and its `/config.json` | dataset `conferenceops`, environment `aks`, version `38aefeb…` |
 | Hybrid search over both events, `POST /api/v1/search` | "something about eBPF and security" → 10 results, `retrievalMode: hybrid`, from KubeCon and the fictional CloudBridge Summit |
 | The persona switcher, `GET /api/v1/demo/profiles` | 8 personas, every one `isFictional: true` |
 | "Where should I go next?", `POST /api/v1/recommendations/next` | as Aisha: `status: matches`, 5 cards with checkable reasons, 74 talks excluded as `NO_MATCH`, the step-free warning with its source link; an unknown profile gets `404` |
 | Admission control on discovery (#32, #36) | one hand-sent search was answered `503 {"code":"DISCOVERY_CAPACITY_EXHAUSTED","retry_after_seconds":1,…}` while the pod was at its limit; the next one got 200 |
-| Deploy on every merge, marked in Dash0 | 18 deploy runs on November 9; the latest run was in progress at the time of the check ([deploys](#deploys)) |
+| Cited answers from published transcripts, `POST /api/v1/ask` | "What did the AI SRE agent get wrong at CloudBridge?" → a two-sentence answer with 2 citations into "AI SRE in Practice: What Our Agent Got Wrong", `retrievalMode: hybrid`, `isFictional: true` |
+| Captioned replays | `/media/cloudbridge/clip-1.mp4` (video/mp4, 570 KB) and `clip-1.vtt` (text/vtt), `manifest.json`; clips 2 and 3 alongside |
+| Deploy on every merge, marked in Dash0 | 18 deploy runs by 22:05 UTC: 14 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge, 1 still running ([deploys](#deploys)) |
 
-**Measured since the first version of this page:** the incident run and its recovery window (below) and Radar's
-verify step after #35. **Pending** (not claimed): the attendee portal UI pull request and a dictation demo on an HTTPS
-origin. CloudBridge's captioned replays, transcript publication and cited Ask from
-[#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) are merged and deployed; they were not part of the
-21:28 hand-check. Details under each track and in [Known limitations](#known-limitations).
+**Measured since the first version of this page:** the incident run and its recovery window (below), Radar's
+verify step after #35, and the CloudBridge replays, transcripts and cited answers
+([#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37), merged as `ec79843` at 21:49 and checked on the
+public URL at 22:03). **Pending** (not claimed): the attendee portal UI pull request
+([#50](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/50)) and a dictation demo on an HTTPS origin. Details
+under each track and in [Known limitations](#known-limitations).
 
 Live progress: the [Build log](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) (issue #1, one entry per
 closed pull request) and the
@@ -224,7 +227,7 @@ finding no longer appears. The verdict is posted on
 | Hard rules first | [#30](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/30): venue clock, window, agenda clashes, level, and captions when asked for, before any ranking; reasons `INTEREST_MATCH`, `HISTORY_MATCH` ("Similar to … which you attended at CloudBridge Summit 2026"), `BOOKMARK_MATCH`, `CAPTIONS_PUBLISHED` on every card |
 | Keyboard-first app | a skip link, labels, one polite live region ([`app.html`](apps/web/src/app/app.html)), tested in Vitest and in the `ui-smoke-accessibility` CI job; [#7](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/7), [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) |
 | Spoken questions | [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) merged and deployed; the audio and the text never reach logs or spans. A demo on an HTTPS origin: **pending** (the public URL is HTTP, so browsers won't grant the microphone there) |
-| Captioned replays and cited Ask | [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) merged and deployed (run 42706138032): CloudBridge has three captioned simulated replays, two published transcripts and one still processing; Ask cites only published transcripts |
+| Captioned replays and cited Ask | [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) merged and deployed ([run 42706138032](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706138032)): three CloudBridge sessions have simulated replays with WebVTT captions on by default, a pause control and transcript panel, each labeled "Simulated excerpt" and fictional; two transcripts are published and one is still processing. Ask cites only published transcripts; clip 3 starts unpublished and is neither searchable nor citable until an organizer publishes it |
 
 ### Capacity: measured, then enforced
 
@@ -278,12 +281,12 @@ above):
 | [42693352199](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42693352199) | `31f8a46` (#27) | the seed hook Job completes after the migrations: 24 sessions, 12 speakers, 39 profiles |
 | [42695783323](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42695783323) | `05884ad` (#29) | the web app on the public URL: "serves the app, its config, and 10 search results" |
 | [42696460473](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42696460473) … [42700714281](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42700714281) | `4da0ba2` (#30) to `cb3c5cf` (#36) | where next, stable semconv, admission control, the worker probe, dictation, the limit of 24: all green |
-| [42705719050](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42705719050) | `72b5693` (#44) | discovery replicas increased to 3 for the incident recovery: success |
-| [42706138032](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706138032) | `ec79843` (#37) | captioned replays, transcript publication and cited Ask: success |
+| [42705719050](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42705719050) | `72b5693` (#44) | the incident fix: discovery 1 → 3 replicas, 3/3 ready about two minutes after the run started; recovery measured in Dash0 |
+| [42706138032](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706138032) | `ec79843` (#37) | replays, transcripts and cited answers, deployed during the incident's recovery window without disturbing it (web and core rolled; discovery's values didn't change) |
 | [42706652771](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706652771) | `5179c01` (#39) | open-session recommendations: success; version reported by the public config |
 | [42707593311](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707593311) | `38aefeb` (#46) | success |
-| [42707926975](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707926975) | `9db96c0` | cancelled |
-| [42707940834](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707940834) | `02dffaf` | in progress at the latest check |
+| [42707926975](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707926975) | `9db96c0` | cancelled when a newer merge started |
+| [42707940834](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707940834) | `02dffaf` | in progress at the 22:05 UTC check; later merges (#47 and #48) deployed in turn |
 
 ## Architecture
 
@@ -296,7 +299,7 @@ flowchart TB
   subgraph aks["AKS, namespace conferenceops"]
     web["web: nginx serves the app and proxies /api"]
     core["core-api (FastAPI): personas, dictation, replays, transcript publication"]
-    discovery["discovery-api (FastAPI): search, where next, Ask; at most 24 requests in flight per pod"]
+    discovery["discovery-api (FastAPI): search, where next, cited Ask answers; at most 24 requests in flight per pod"]
     worker["worker: KubeCon import, outbox indexing; liveness probe reads its heartbeat"]
     pg[("PostgreSQL: canonical records + outbox")]
     es[("Elasticsearch: projections via the outbox")]
@@ -305,7 +308,7 @@ flowchart TB
   end
 
   feed["Sessionize public feed (KubeCon NA 2026)"]
-  openai["OpenAI: embeddings, dictation, Ask answers"]
+  openai["OpenAI: embeddings, dictation, cited Ask answers"]
   dash0["Dash0 (dataset conferenceops): dashboard, checks, Agent0"]
   gha["GitHub Actions + Helm"]
   radar["Radar (on the builder's laptop, read-only)"]
@@ -321,7 +324,7 @@ flowchart TB
   worker -->|"sessions + outbox jobs"| pg
   worker -->|"indexes projections"| es
   core -->|"dictation"| openai
-  discovery -->|"query embeddings, Ask answers"| openai
+  discovery -->|"query embeddings; cited Ask answers (structured output, citations re-checked)"| openai
   worker -->|"document embeddings"| openai
   core --> otel
   discovery --> otel
@@ -333,8 +336,8 @@ flowchart TB
 ```
 
 - **One Python package, three processes,** all from one image: `core-api` (personas, dictation, replays and transcript
-  publication), `discovery-api` (search, "where should I go next?", cited Ask) and `worker` (KubeCon import and outbox
-  indexing, each in its own loop).
+  publication), `discovery-api` (search, "where should I go next?", cited Ask answers) and `worker` (KubeCon import and
+  outbox indexing, each in its own loop).
   Discovery is its own process so it can scale out under load while the rest keeps working.
 - **PostgreSQL is canonical.** A write and its outbox job commit in one transaction. The worker turns outbox jobs
   into Elasticsearch documents, versioned by revision, so a late job never overwrites newer content.
@@ -426,11 +429,12 @@ flowchart TB
 - **The planted defect stays open.** #28 is blocked by Gitar and held with `do-not-merge` as evidence; it will be
   closed without merging.
 - **No generated explanation for "Where should I go next?"** That answer remains deterministic. The typed Ask bar
-  also returns a cited answer from published CloudBridge transcripts only, and falls back to a retrieved passage if the
-  model is slow or unavailable.
-- **The archive has a small simulated media library.** CloudBridge has three captioned simulated replays, two
-  published transcripts and one still processing; [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37)
-  merged the feature. These are fictional demo excerpts, not KubeCon content.
+  returns cited answers from published CloudBridge transcripts only, and falls back to a retrieved passage if the model
+  is slow or unavailable; KubeCon has no transcripts (SPEAKER-1).
+- **The archive has a small simulated media library.** CloudBridge has three captioned simulated excerpts (60–90 s
+  each), two published transcripts and one still processing; [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37)
+  merged the feature. Clip 3 starts unpublished and is neither searchable nor citable until an organizer publishes it.
+  These are fictional demo excerpts, not KubeCon content or full talks.
 - **Dictation needs HTTPS.** The public URL is plain HTTP, so the microphone works only on a local or port-forwarded
   instance.
 - **Telemetry gaps.** OpenAI and PostgreSQL calls aren't traced (a failure there shows in discovery-api's logs), the
@@ -503,7 +507,8 @@ No project code or configuration was written before the start.
 - **Gitar** reviews every pull request, can push fixes, approves, and auto-merges low- and medium-risk changes.
 - **Agent0** (Dash0) investigates production telemetry and can open fix pull requests.
 - **Radar's** AI investigations run through Claude Code in a read-only mode.
-- The product itself uses **OpenAI** models: embeddings, dictation and cited Ask answers.
+- The product itself uses **OpenAI** models: embeddings, dictation and cited Ask answers (Responses API with
+  structured output, every citation re-checked against the database).
 
 ## License
 
