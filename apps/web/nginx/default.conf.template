@@ -9,7 +9,11 @@ server {
     server_name _;
     root /usr/share/nginx/html;
     access_log /dev/stdout paths_only;
-    resolver ${NGINX_RESOLVER} valid=30s ipv6=off;
+    # proxy_pass with a variable resolves the API name per request, so nginx starts without the APIs. The resolver is
+    # the one in /etc/resolv.conf (NGINX_ENTRYPOINT_LOCAL_RESOLVERS in the Dockerfile); nginx ignores search domains,
+    # so upstream names must be fully qualified.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+    resolver_timeout 5s;
 
     location = /health/live { access_log off; default_type text/plain; return 200 "ok\n"; }
     location = /health/ready { access_log off; default_type text/plain; return 200 "ready\n"; }
