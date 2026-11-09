@@ -100,6 +100,9 @@ describe('ReplayViewComponent', () => {
     expect(text).toContain('Simulated excerpt');
     expect(text).toContain('Tracing LLM Calls in Production');
     expect(el.querySelector('.controls button')?.textContent?.trim()).toBe('Play');
+    // The replay's controls are the app's buttons (44px targets, shared spacing), not a one-off style.
+    expect(el.querySelector('.controls button')?.classList).toContain('btn');
+    expect(el.querySelector('.panel-controls button')?.classList).toContain('btn');
 
     const cues = el.querySelectorAll('.cues li');
     expect(cues.length).toBe(3);
