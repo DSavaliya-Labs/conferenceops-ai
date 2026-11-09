@@ -101,7 +101,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - run: echo "::notice title=Not applicable yet::No API contract yet. The search PR makes this check real."
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.13.7/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: The committed OpenAPI schema matches the code (API-1)
+        working-directory: backend
+        run: |
+          uv sync --frozen --python 3.12
+          uv run python -m conferenceops.export_openapi > /tmp/openapi.json
+          diff -u ../contracts/openapi.json /tmp/openapi.json || { echo "::error::Regenerate contracts/openapi.json"; exit 1; }
+      - name: The generated TypeScript types match the schema (API-1)
+        run: |
+          npx --yes openapi-typescript@7.4.4 contracts/openapi.json -o /tmp/api.d.ts
+          diff -u contracts/api.d.ts /tmp/api.d.ts || { echo "::error::Regenerate contracts/api.d.ts"; exit 1; }
 
   ui-smoke-accessibility:
     name: ui-smoke-accessibility

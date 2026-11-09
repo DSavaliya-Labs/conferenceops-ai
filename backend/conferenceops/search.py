@@ -1,0 +1,133 @@
+"""Hybrid search over the session projections: BM25 and kNN with identical filters, fused with reciprocal rank fusion
+in Python (PLAN §8.2). If query embedding fails, search keeps working on BM25 and says so (AI-1, fail open)."""
+
+import logging
+from collections.abc import Sequence
+from datetime import datetime
+from typing import Literal, Protocol
+from zoneinfo import ZoneInfo
+
+from pydantic import BaseModel, ConfigDict, Field
+from pydantic.alias_generators import to_camel
+
+from conferenceops.indexing import ALIAS, Embedder
+
+log = logging.getLogger("conferenceops.search")
+
+RRF_K = 60
+CANDIDATES = 50
+VENUE_TZ = ZoneInfo("America/Denver")
+
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+
+class SearchRequest(ApiModel):
+    query: str = Field(min_length=1, max_length=300)
+    conference: str | None = Field(default=None, description="Limit to one event, e.g. kubecon-na-2026")
+    limit: int = Field(default=10, ge=1, le=25)
+
+
+class SearchHit(ApiModel):
+    id: str
+    title: str
+    event: str
+    conference: str
+    is_fictional: bool
+    starts_at: datetime
+    starts_at_venue: str = Field(description="Start in the event's time zone, e.g. 'Tue Nov 10, 10:30 AM MST'")
+    room: str | None = None
+    level: str | None = None
+    topics: list[str] = []
+
+
+class SearchResponse(ApiModel):
+    results: list[SearchHit]
+    retrieval_mode: Literal["hybrid", "lexical"]
+
+
+class SearchBackend(Protocol):
+    def search(self, request: SearchRequest) -> SearchResponse: ...
+
+
+def rrf_fuse(rankings: Sequence[Sequence[str]], k: int = RRF_K) -> list[str]:
+    """Reciprocal rank fusion: score(d) = sum(1 / (k + rank)), ranks start at 1. Ties break by ID, so the order is
+    deterministic."""
+    scores: dict[str, float] = {}
+    for ranking in rankings:
+        for rank, doc_id in enumerate(ranking, start=1):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return sorted(scores, key=lambda d: (-scores[d], d))
+
+
+def venue_time(instant: datetime) -> str:
+    local = instant.astimezone(VENUE_TZ)
+    return f"{local:%a %b} {local.day}, {local:%I:%M %p %Z}".replace(" 0", " ")
+
+
+def _filters(request: SearchRequest) -> list[dict]:
+    filters: list[dict] = [{"term": {"is_service": False}}]
+    if request.conference:
+        filters.append({"term": {"conference": request.conference}})
+    return filters
+
+
+class HybridSearch:
+    def __init__(self, es, embedder: Embedder):
+        self.es = es
+        self.embedder = embedder
+
+    def _bm25(self, request: SearchRequest) -> list[str]:
+        body = {
+            "bool": {
+                "must": {"multi_match": {"query": request.query, "fields": ["title^3", "abstract", "topics^2"]}},
+                "filter": _filters(request),
+            }
+        }
+        hits = self.es.search(index=ALIAS, query=body, size=CANDIDATES, source=False)["hits"]["hits"]
+        return [h["_id"] for h in hits]
+
+    def _knn(self, request: SearchRequest, vector: list[float]) -> list[str]:
+        knn = {
+            "field": "embedding",
+            "query_vector": vector,
+            "k": CANDIDATES,
+            "num_candidates": CANDIDATES * 4,
+            "filter": _filters(request),
+        }
+        hits = self.es.search(index=ALIAS, knn=knn, size=CANDIDATES, source=False)["hits"]["hits"]
+        return [h["_id"] for h in hits]
+
+    def search(self, request: SearchRequest) -> SearchResponse:
+        rankings = [self._bm25(request)]
+        mode: Literal["hybrid", "lexical"] = "lexical"
+        try:
+            vector = self.embedder.embed([request.query])[0]
+            rankings.append(self._knn(request, vector))
+            mode = "hybrid"
+        except Exception:
+            # PRIV-1: log the failure, never the query.
+            log.warning("query embedding failed; searching by keywords", exc_info=True)
+        ids = rrf_fuse(rankings)[: request.limit]
+        if not ids:
+            return SearchResponse(results=[], retrieval_mode=mode)
+        docs = {d["_id"]: d["_source"] for d in self.es.mget(index=ALIAS, ids=ids)["docs"] if d.get("found")}
+        results = [_hit(doc_id, docs[doc_id]) for doc_id in ids if doc_id in docs]
+        return SearchResponse(results=results, retrieval_mode=mode)
+
+
+def _hit(doc_id: str, src: dict) -> SearchHit:
+    starts = datetime.fromisoformat(src["starts_at"])
+    return SearchHit(
+        id=doc_id,
+        title=src["title"],
+        event=src["event_name"],
+        conference=src["conference"],
+        is_fictional=src["is_fictional"],
+        starts_at=starts,
+        starts_at_venue=venue_time(starts),
+        room=src.get("room"),
+        level=src.get("level"),
+        topics=src.get("topics") or [],
+    )
