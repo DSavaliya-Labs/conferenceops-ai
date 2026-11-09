@@ -9,6 +9,7 @@ server {
     server_name _;
     root /usr/share/nginx/html;
     access_log /dev/stdout paths_only;
+    resolver ${NGINX_RESOLVER} valid=30s ipv6=off;
 
     location = /health/live { access_log off; default_type text/plain; return 200 "ok\n"; }
     location = /health/ready { access_log off; default_type text/plain; return 200 "ready\n"; }
@@ -21,11 +22,13 @@ server {
     }
 
     location ~ ^/api/v1/(search|recommendations|ask) {
-        proxy_pass http://${DISCOVERY_UPSTREAM};
+        set $discovery http://${DISCOVERY_UPSTREAM};
+        proxy_pass $discovery;
         proxy_set_header Host $host;
     }
     location /api/ {
-        proxy_pass http://${CORE_UPSTREAM};
+        set $core http://${CORE_UPSTREAM};
+        proxy_pass $core;
         proxy_set_header Host $host;
     }
     location / {

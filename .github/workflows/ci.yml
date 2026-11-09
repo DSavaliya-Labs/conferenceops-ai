@@ -113,7 +113,7 @@ jobs:
         run: docker build --tag "conferenceops-web:${GITHUB_SHA}" apps/web
       - name: The web image runs as non-root and serves the app and its config
         run: |
-          docker run --rm -d --name web -p 8081:8080 "conferenceops-web:${GITHUB_SHA}"
+          docker run --rm -d --name web -p 8081:8080 -e NGINX_RESOLVER=127.0.0.11 -e CORE_UPSTREAM=core.invalid:80 -e DISCOVERY_UPSTREAM=discovery.invalid:80 "conferenceops-web:${GITHUB_SHA}"
           for _ in $(seq 1 20); do curl -sf localhost:8081/health/ready && break; sleep 1; done
           curl -sf localhost:8081/health/ready || { docker logs web; exit 1; }
           curl -sf localhost:8081/ | grep -q "<app-root"
