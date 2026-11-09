@@ -1,6 +1,7 @@
 import { Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { Router } from '@angular/router';
 
+import { DictationButton } from './dictation-button';
 import { Icon } from './icons';
 import { PersonaService } from './personas';
 import { SearchService } from './search';
@@ -9,10 +10,10 @@ import { WhereNextService } from './where-next';
 /** The Ask bar, centered in the app bar: one field, two questions. Search answers "which talk matches my
  *  interests?"; "Where next?" answers "which talk can I actually go to?". Submitting opens the matching page; the
  *  field keeps focus, so the attendee can refine, and the page's live region says what came back (A11Y-1).
- *  The dictation microphone mounts inside the field, next to the input (see the comment in the template). */
+ *  The dictation microphone sits inside the field, next to the input; its status line wraps under the field. */
 @Component({
   selector: 'app-search-bar',
-  imports: [Icon],
+  imports: [DictationButton, Icon],
   template: `
     <form class="search" role="search" (submit)="submit($event)" novalidate>
       <label for="ask-input" class="visually-hidden">Ask about talks</label>
@@ -31,7 +32,7 @@ import { WhereNextService } from './where-next';
           [attr.aria-invalid]="validation() ? 'true' : null"
           [attr.aria-describedby]="validation() ? 'ask-error' : 'ask-hint'"
         />
-        <!-- Dictation (PR feat/dictation) mounts here: <app-dictation-button (transcribed)="onDictated($event)" /> -->
+        <app-dictation-button (transcribed)="onDictated($event)" />
         <button type="submit" class="btn btn-primary" [disabled]="search.status() === 'searching'">
           <app-icon name="search" [size]="18" />
           <span class="label">Search</span>
@@ -61,6 +62,7 @@ import { WhereNextService } from './where-next';
     }
     .field {
       display: flex;
+      flex-wrap: wrap;
       align-items: center;
       gap: var(--space-1);
       min-height: 3rem;

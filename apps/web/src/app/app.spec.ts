@@ -1,7 +1,4 @@
-import { TestBed } from '@angular/core/testing';
-
 import { NAV_LINKS } from './app';
-import { PersonaService } from './personas';
 import { scrubUrlAttributes } from './telemetry';
 import {
   AISHA,
@@ -239,12 +236,13 @@ describe('The Ask bar', () => {
     );
   });
 
-  it('has a place for the dictation microphone next to the input', async () => {
+  it('has the three inline buttons in one field: the microphone right after the input, Search, Where next?', async () => {
     const view = await start();
     const field = view.el.querySelector('form[role="search"] .field')!;
-    expect(field.querySelector('#ask-input')).not.toBeNull();
-    expect(TestBed.inject(PersonaService)).toBeTruthy();
-    expect(field.querySelectorAll('button').length).toBe(2);
+    const input = field.querySelector('#ask-input')!;
+    expect(input.nextElementSibling?.tagName.toLowerCase()).toBe('app-dictation-button');
+    expect(texts(field, 'button')).toEqual(['Dictate', 'Search', 'Where next?']);
+    expect(view.el.querySelector('#dictation-status')?.getAttribute('aria-live')).toBe('polite');
   });
 });
 
