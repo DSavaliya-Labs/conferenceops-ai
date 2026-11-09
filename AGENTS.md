@@ -54,6 +54,7 @@ and shows a platform run by an AI operations team.
 | `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
 | `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
+| `docs/` | Material the README embeds, such as the public URL's QR code (`public-url-qr.svg`) |
 
 When you add a module, a route or a top-level directory, add it here in the same pull request.
 
