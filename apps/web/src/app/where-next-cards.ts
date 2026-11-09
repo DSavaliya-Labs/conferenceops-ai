@@ -1,5 +1,7 @@
 import { Component, computed, input } from '@angular/core';
 
+import { Icon } from './icons';
+import { EventBadge } from './session-card';
 import { WhereNextResponse, WhereNextWindow } from './where-next';
 
 const WINDOW_LABELS: Record<WhereNextWindow, string> = {
@@ -24,70 +26,86 @@ const EXCLUSION_LABELS: Record<string, string> = {
  *  each with its source link (ACCESS-1). Nothing here ever says step-free: the server sends only "not published". */
 @Component({
   selector: 'app-where-next-cards',
+  imports: [EventBadge, Icon],
   template: `
     @if (response(); as r) {
       <section class="where-next-results" aria-labelledby="where-next-results-heading">
-        <h2 id="where-next-results-heading">
-          @if (r.status === 'matches') {
-            Suggestions {{ windowLabel() }}
-          } @else {
-            No talk fits {{ windowLabel() }}
-          }
-        </h2>
-        <p class="as-of">As of {{ r.conferenceTimeVenue }}, event time.</p>
+        <div class="results-head">
+          <h2 id="where-next-results-heading">
+            @if (r.status === 'matches') {
+              Suggestions {{ windowLabel() }}
+            } @else {
+              No talk fits {{ windowLabel() }}
+            }
+          </h2>
+          <p class="as-of muted">As of {{ r.conferenceTimeVenue }}, event time.</p>
+        </div>
 
         @for (notice of r.warnings; track notice.code) {
-          <p class="notice">
-            {{ notice.text }}
-            @if (notice.sourceUrl) {
-              <a [href]="notice.sourceUrl" target="_blank" rel="noopener noreferrer"
-                >Official source<span class="visually-hidden"> (opens in a new tab)</span></a
-              >
-            }
+          <p class="callout callout-warn notice">
+            <span
+              >{{ notice.text }}
+              @if (notice.sourceUrl) {
+                <a class="ext" [href]="notice.sourceUrl" target="_blank" rel="noopener noreferrer"
+                  >Official source<app-icon name="external" [size]="14" /><span
+                    class="visually-hidden"
+                  >
+                    (opens in a new tab)</span
+                  ></a
+                >
+              }
+            </span>
           </p>
         }
         @if (r.retrievalMode === 'lexical') {
-          <p class="notice">
+          <p class="callout notice">
             Matched by keywords only right now: the language model didn't answer in time.
           </p>
         }
 
         @if (r.status === 'no_fit') {
-          @if (exclusions().length > 0) {
-            <p>Of the talks we looked at:</p>
-            <ul class="exclusions">
-              @for (item of exclusions(); track item.code) {
-                <li>{{ item.count }} {{ item.count === 1 ? 'talk' : 'talks' }} {{ item.label }}</li>
-              }
-            </ul>
-          }
-          <p>Try another time, or search for a topic.</p>
+          <div class="card empty">
+            @if (exclusions().length > 0) {
+              <p>Of the talks we looked at:</p>
+              <ul class="exclusions">
+                @for (item of exclusions(); track item.code) {
+                  <li>
+                    {{ item.count }} {{ item.count === 1 ? 'talk' : 'talks' }} {{ item.label }}
+                  </li>
+                }
+              </ul>
+            }
+            <p>Try another time, or search for a topic.</p>
+          </div>
         } @else {
           <ol class="cards">
-            @for (candidate of r.candidates; track candidate.sessionId) {
-              <li class="card">
-                <article [attr.aria-labelledby]="'card-' + candidate.sessionId">
-                  <h3 [id]="'card-' + candidate.sessionId">{{ candidate.title }}</h3>
-                  <p class="event-label">
-                    {{ candidate.event }} ·
-                    <span class="badge">{{
-                      candidate.isFictional
-                        ? 'Fictional demo event'
-                        : 'Real event, official schedule'
-                    }}</span>
-                  </p>
+            @for (candidate of r.candidates; track candidate.sessionId; let i = $index) {
+              <li class="card" [attr.aria-labelledby]="'card-' + candidate.sessionId">
+                <article>
+                  <div class="head">
+                    <span class="rank" aria-hidden="true">{{ i + 1 }}</span>
+                    <h3 [id]="'card-' + candidate.sessionId">{{ candidate.title }}</h3>
+                    <app-event-badge [fictional]="candidate.isFictional" />
+                  </div>
+                  <p class="event-label">{{ candidate.event }}</p>
                   <dl class="facts">
-                    <dt>When</dt>
-                    <dd>
-                      <time [attr.datetime]="candidate.startsAt">{{
-                        candidate.startsAtVenue
-                      }}</time>
-                    </dd>
-                    <dt>Room</dt>
-                    <dd>{{ candidate.room ?? 'Not listed in the schedule' }}</dd>
+                    <div>
+                      <dt><app-icon name="clock" [size]="16" /> When</dt>
+                      <dd>
+                        <time [attr.datetime]="candidate.startsAt">{{
+                          candidate.startsAtVenue
+                        }}</time>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt><app-icon name="pin" [size]="16" /> Room</dt>
+                      <dd>{{ candidate.room ?? 'Not listed in the schedule' }}</dd>
+                    </div>
                     @if (candidate.level) {
-                      <dt>Level</dt>
-                      <dd>{{ candidate.level }}</dd>
+                      <div>
+                        <dt><app-icon name="spark" [size]="16" /> Level</dt>
+                        <dd class="level">{{ candidate.level }}</dd>
+                      </div>
                     }
                   </dl>
                   <h4>Why this talk</h4>
@@ -110,8 +128,14 @@ const EXCLUSION_LABELS: Record<string, string> = {
                           ({{ statement.location }})
                         }
                         @if (statement.sourceUrl) {
-                          <a [href]="statement.sourceUrl" target="_blank" rel="noopener noreferrer"
-                            >Official source<span class="visually-hidden">
+                          <a
+                            class="ext"
+                            [href]="statement.sourceUrl"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            >Official source<app-icon name="external" [size]="14" /><span
+                              class="visually-hidden"
+                            >
                               (opens in a new tab)</span
                             ></a
                           >
@@ -128,75 +152,105 @@ const EXCLUSION_LABELS: Record<string, string> = {
     }
   `,
   styles: `
-    .as-of {
-      color: #3f3f50;
-      margin-top: 0;
+    .where-next-results {
+      display: grid;
+      gap: var(--space-4);
+    }
+    .results-head {
+      display: grid;
+      gap: var(--space-1);
     }
     .notice {
-      border-left: 4px solid #1d4ed8;
-      padding: 0.25rem 0.75rem;
-      background: #eef2ff;
+      margin: 0;
     }
     .cards {
       list-style: none;
       padding: 0;
+      margin: 0;
+      display: grid;
+      gap: var(--space-4);
     }
-    .card {
-      border: 1px solid #8a8a9e;
-      border-radius: 0.5rem;
-      padding: 0.75rem 1rem;
-      margin-bottom: 1rem;
+    .cards .card {
+      display: grid;
+      gap: var(--space-2);
+    }
+    .head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start;
+      gap: var(--space-2) var(--space-3);
+    }
+    .rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: none;
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: var(--radius-full);
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: var(--text-sm);
     }
     h3 {
-      margin: 0 0 0.25rem;
-      font-size: 1.15rem;
+      flex: 1 1 14rem;
+      min-width: 0;
+      overflow-wrap: anywhere;
     }
     h4 {
-      margin: 0.75rem 0 0.25rem;
-      font-size: 1rem;
+      margin-top: var(--space-2);
+      font-size: var(--text-sm);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--ink-3);
     }
     .event-label {
-      margin: 0;
-      color: #3f3f50;
-    }
-    .badge {
-      font-weight: 600;
+      color: var(--ink-3);
+      font-size: var(--text-sm);
     }
     .facts {
-      display: grid;
-      grid-template-columns: max-content 1fr;
-      gap: 0.15rem 0.75rem;
-      margin: 0.5rem 0 0;
-    }
-    .facts dt {
-      font-weight: 600;
-    }
-    .facts dd {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2) var(--space-5);
       margin: 0;
+    }
+    .facts div {
+      display: grid;
+      gap: 0.125rem;
+    }
+    dt {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      font-size: var(--text-xs);
+      font-weight: 600;
+      color: var(--ink-3);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    dd {
+      margin: 0;
+      font-weight: 500;
+    }
+    .level {
+      text-transform: capitalize;
     }
     .reasons,
     .access,
     .exclusions {
       margin: 0;
       padding-left: 1.25rem;
+      display: grid;
+      gap: var(--space-1);
+      list-style: disc;
     }
     .not-published {
       font-weight: 600;
     }
     .unconfirmed {
-      margin: 0 0 0.25rem;
-    }
-    a:focus-visible {
-      outline: 3px solid #1d4ed8;
-      outline-offset: 2px;
-    }
-    .visually-hidden {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      overflow: hidden;
-      clip-path: inset(50%);
-      white-space: nowrap;
+      color: var(--ink-2);
+      font-size: var(--text-sm);
     }
   `,
 })

@@ -50,11 +50,14 @@ web:
     endpoint: https://ingress.us-west-2.aws.dash0.com
     dataset: conferenceops
 
-# The public entry point: an Azure LoadBalancer with a DNS name (<dnsLabel>.<region>.cloudapp.azure.com).
+# The public entry point: an Azure LoadBalancer with a DNS name (<dnsLabel>.<region>.cloudapp.azure.com). Every node
+# forwards it to a Ready web pod (externalTrafficPolicy Cluster in templates/public.yaml).
 public:
   enabled: false
   dnsLabel: ""
-  target: web  # the component that receives public traffic: the web app, which proxies /api to the APIs
+  # The component that receives public traffic: the web app, which proxies /api to the APIs. helm-policy
+  # (scripts/check-chart-policy.sh) fails the AKS render for any other.
+  target: web
 
 postgres:
   image: postgres:17.6

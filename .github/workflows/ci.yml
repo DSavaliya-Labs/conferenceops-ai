@@ -163,8 +163,15 @@ jobs:
           args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci
             --set web.image.repository=example.azurecr.io/conferenceops-web --set web.image.tag=ci)
           helm lint deploy/chart "${args[@]}"
-          helm template conferenceops deploy/chart "${args[@]}" \
-            | kubeconform -strict -summary -ignore-missing-schemas
+          helm template conferenceops deploy/chart "${args[@]}" >"$RUNNER_TEMP/aks.yaml"
+          kubeconform -strict -summary -ignore-missing-schemas "$RUNNER_TEMP/aks.yaml"
+      # kubeconform checks only the schema. These are what the deploy relies on: K8S-1 for every container, the public
+      # Service selecting the web pods with externalTrafficPolicy Cluster and an HTTP probe on their readiness path, and
+      # the web pods' writable emptyDirs. The tests break each one in a render and expect the check to name it.
+      - name: The rendered chart keeps what the deploy relies on (K8S-1, the public entry point)
+        run: scripts/check-chart-policy.sh "$RUNNER_TEMP/aks.yaml"
+      - name: The chart policy catches each broken promise
+        run: bash scripts/tests/check-chart-policy.test.sh
       - name: Discovery replicas outside the bounds must not render (OPS-1)
         run: |
           out=$(helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml --set image.repository=x \
@@ -222,13 +229,25 @@ jobs:
           # (0775, owned by root), which user 101 can't write. No --rm, so `docker logs` shows why nginx stopped.
           docker run -d --name web -p 8081:8080 --user 101:101 --read-only \
             --tmpfs /etc/nginx/conf.d:mode=0777 --tmpfs /tmp:mode=0777 --cap-drop ALL --security-opt no-new-privileges \
-            -e CORE_UPSTREAM=core.invalid:80 -e DISCOVERY_UPSTREAM=discovery.invalid:80 "conferenceops-web:${GITHUB_SHA}"
+            -e CORE_UPSTREAM=core.invalid:80 -e DISCOVERY_UPSTREAM=discovery.invalid:80 \
+            -e DASH0_BROWSER_TOKEN=ci-dummy-browser-token "conferenceops-web:${GITHUB_SHA}"
           for _ in $(seq 1 20); do curl -sf localhost:8081/health/ready && break; sleep 1; done
           curl -sf localhost:8081/health/ready || { docker logs web; exit 1; }
           curl -sf localhost:8081/ | grep -q "<app-root"
-          curl -sf localhost:8081/config.json | python3 -c "import json,sys; c=json.load(sys.stdin); assert c['dash0Dataset']=='conferenceops'"
+          # The page's config carries the browser token it is given (a dummy here), which the deploy check requires.
+          curl -sf localhost:8081/config.json | python3 -c "import json,sys; c=json.load(sys.stdin); assert c['dash0Dataset']=='conferenceops'; assert c['dash0Token']=='ci-dummy-browser-token'"
           test "$(docker exec web id -u)" != 0
           # An API name that doesn't resolve fails only that request (502); nginx keeps serving.
           test "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST localhost:8081/api/v1/search)" = 502 || { docker logs web; exit 1; }
+          # PRIV-1: verify the rendered dictation location disables buffering and does not spool a large upload to /tmp.
+          docker exec web nginx -T 2>&1 | grep -A4 'location = /api/v1/dictation' | grep -qF 'proxy_request_buffering off;' || { docker logs web; exit 1; }
+          head -c 2000000 /dev/urandom >/tmp/audio.bin
+          curl -s -o /dev/null --max-time 15 --data-binary @/tmp/audio.bin localhost:8081/api/v1/dictation || true
+          ! docker logs web 2>&1 | grep -q 'buffered to a temporary file' || { docker logs web; exit 1; }
+          # Dictation recordings of up to 10 MB reach core-api: a 2 MiB body is streamed to the upstream (502 here, because
+          # core.invalid doesn't resolve) instead of stopping at nginx's 1 MB default body limit (413).
+          head -c 2097152 /dev/zero >"$RUNNER_TEMP/recording.webm"
+          test "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST -H 'Content-Type: audio/webm' \
+            --data-binary @"$RUNNER_TEMP/recording.webm" localhost:8081/api/v1/dictation)" = 502 || { docker logs web; exit 1; }
           curl -sf localhost:8081/health/ready
           docker rm -f web

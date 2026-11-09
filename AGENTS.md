@@ -34,14 +34,17 @@ and shows a platform run by an AI operations team.
 
 | Path | What lives there |
 |---|---|
-| `apps/web/` | Angular app |
-| `apps/web/src/app/dictation-button.ts`, `backend/conferenceops/dictation.py` | Dictation, the spoken half of the Ask bar: the microphone button next to it, and `POST /api/v1/dictation` on core-api (`gpt-transcribe` through the server, never from the browser). The text lands in the Ask bar for review; nothing is searched until the attendee submits. PRIV-1: the audio is never stored, and neither it nor the text reaches logs or spans |
+| `apps/web/` | Angular app: the attendee portal. `src/app/app.ts` is the shell (app bar with the Ask bar and the persona menu, left navigation, routed pages); `src/app/pages/` holds one page per feature (`/talks`, `/where-next`, `/agenda`, `/events`, `/accessibility`, `/operations`), each a route in `app.routes.ts` and an entry in `NAV_LINKS`; `src/styles.css` holds the design tokens (light and dark) |
+| `apps/web/src/app/dictation-button.ts`, `backend/conferenceops/dictation.py` | Dictation, the spoken half of the Ask bar: the microphone button next to it, and `POST /api/v1/dictation` on core-api (`gpt-transcribe` through the server, never from the browser). The text lands in the Ask bar for review; nothing is searched until the attendee submits. PRIV-1: nginx streams the audio to core-api, which holds it in memory; it is never stored, and neither it nor the text reaches logs or spans |
 | `backend/conferenceops/` | `core_app`, `discovery_app`, `worker`, shared domain, services and repositories |
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
 | `backend/conferenceops/personas.py` | The persona switcher's list, `GET /api/v1/demo/profiles` on core-api (public fields only), and the `X-Demo-Profile-ID` header (AUTHZ-1) |
 | `backend/conferenceops/where_next.py`, `where_next_data.py` | "Where should I go next?", `POST /api/v1/recommendations/next` on discovery-api: hard rules, then ranking, with checkable reasons; the ranking weights live in `where_next.py` |
+| `backend/conferenceops/portal.py` | The portal's reads on core-api: `GET /api/v1/conferences` (both events, counts), `GET /api/v1/conferences/{slug}/access-facts` (the stored facts with their source links, ACCESS-1; 404 for an unknown event) and `GET /api/v1/me/agenda` (the persona's bookmarks and attended sessions behind `X-Demo-Profile-ID`, AUTHZ-1; public fields only, PRIV-1) |
+| `docs/screenshots/` | Screenshots of the portal from the pull request that built it, referenced from that PR |
 | `backend/conferenceops/admission.py` | discovery-api's admission control: at most `DISCOVERY_MAX_INFLIGHT` requests in progress per pod on its `/api/v1` routes (chart value `components.discovery.maxInflight`); above that, an immediate 503 `DISCOVERY_CAPACITY_EXHAUSTED` with `Retry-After`, recorded on the server span, in a metric and in one log line |
+| `backend/conferenceops/worker/liveness.py` | The worker's liveness probe: each loop writes the time of its next beat under `/tmp/worker-heartbeat` (setting `worker_heartbeat_dir`), and the chart's exec probe, `python -m conferenceops.worker.liveness`, exits 1 when a loop is past that time or none has beaten yet; it reads only those files, never PostgreSQL, Elasticsearch or OpenAI (K8S-1) |
 | `backend/conferenceops/transcripts.py`, `transcript_indexing.py`, `ask.py` | The publication boundary: the replay and organizer publish routes on core-api, the `co-transcripts` projection in the worker, and the cited answers of `POST /api/v1/ask` on discovery-api |
 | `contracts/` | Committed OpenAPI schema (core-api and discovery-api in one document, from `python -m conferenceops.export_openapi`) and the generated Angular client |
 | `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it. Its `transcripts` entries are the three captioned clips |
@@ -50,7 +53,7 @@ and shows a platform run by an AI operations team.
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
 | `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
-| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh`, `generate-cloudbridge-media.sh` (the replay clips, with `cloudbridge_media.py`) |
+| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh`, `generate-cloudbridge-media.sh` (the replay clips, with `cloudbridge_media.py`), `dash0-deploy-marker.sh` (the deploy's `dash0.deployment` events, succeeded or failed). Their tests: `scripts/tests/`, `check-chart-policy.sh` (what the rendered AKS chart must keep: K8S-1 for every container, the public Service on the web pods with `externalTrafficPolicy: Cluster` and an HTTP probe on their readiness path, the web pods' emptyDirs; run by helm-policy). Their tests are in `scripts/tests/` |
 | `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
 | `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
@@ -122,12 +125,16 @@ docker build -t conferenceops-backend backend # one image; the Deployment picks 
 helm dependency build deploy/chart && helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml \
   --set image.repository=x --set image.tag=y \
   --set web.image.repository=x --set web.image.tag=y   # render the chart as CI does
+helm template ... | scripts/check-chart-policy.sh       # what helm-policy checks on that render (K8S-1, public entry point)
+bash scripts/tests/check-chart-policy.test.sh           # that check's tests (helm and ruby)
 ```
 
 The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com, and it serves the web app: nginx serves the
 Angular app and `/config.json`, and proxies search, recommendations and Ask to discovery-api and every other `/api`
 route to core-api. Every merge to `main` builds both images, deploys them there (`deploy.yml`), checks that the URL
-serves the app, its config and a search, and marks the deploy in Dash0 as a `dash0.deployment` event.
+serves the app, its config with the browser token (without it, browser monitoring is off) and a search, and marks the
+deploy in Dash0 as a `dash0.deployment` event per service, with `deployment.status` succeeded or failed
+(`scripts/dash0-deploy-marker.sh`).
 
 ## Web app commands
 

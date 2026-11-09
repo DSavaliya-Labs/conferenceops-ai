@@ -1,4 +1,13 @@
-import { Component, ElementRef, OnDestroy, inject, input, output, signal, viewChild } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  OnDestroy,
+  inject,
+  input,
+  output,
+  signal,
+  viewChild,
+} from '@angular/core';
 
 import { DictationService } from './dictation';
 
@@ -6,7 +15,13 @@ export type DictationState = 'idle' | 'recording' | 'transcribing' | 'done' | 'f
 
 /** Containers in the order we prefer them: what the transcription model lists (webm, mp4), then Firefox's ogg
  *  fallback. The browser records the first one it supports, or its own default when it supports none. */
-const PREFERRED_TYPES = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus', 'audio/ogg'];
+const PREFERRED_TYPES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+  'audio/ogg;codecs=opus',
+  'audio/ogg',
+];
 
 /** The app's own upload bound (PLAN §9.2); core-api enforces the same number. */
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -50,9 +65,9 @@ function describeMicrophoneError(error: unknown): string {
     >
       @if (state() === 'recording') {
         <span class="dot" aria-hidden="true"></span>
-        Stop recording
+        <span class="label">Stop recording</span>
       } @else if (state() === 'transcribing') {
-        Transcribing…
+        <span class="label">Transcribing…</span>
       } @else {
         <svg class="icon" aria-hidden="true" viewBox="0 0 24 24" width="18" height="18">
           <path
@@ -60,7 +75,7 @@ function describeMicrophoneError(error: unknown): string {
             d="M12 15a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v5a4 4 0 0 0 4 4Zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.93V22h2v-3.07A8 8 0 0 0 20 11h-2Z"
           />
         </svg>
-        Dictate
+        <span class="label">Dictate</span>
       }
     </button>
     @if (state() === 'recording') {
@@ -72,6 +87,7 @@ function describeMicrophoneError(error: unknown): string {
       aria-live="polite"
       aria-atomic="true"
       [class.error]="state() === 'failed'"
+      [class.shown]="message() !== ''"
       >{{ message() }}</span
     >
   `,
@@ -80,38 +96,56 @@ function describeMicrophoneError(error: unknown): string {
       display: contents;
     }
     button {
-      font-size: 1rem;
-      padding: 0.5rem 0.9rem;
-      border-radius: 0.25rem;
-      cursor: pointer;
-      background: #ffffff;
       display: inline-flex;
       align-items: center;
-      gap: 0.4rem;
+      justify-content: center;
+      gap: var(--space-2);
+      flex: none;
+      min-height: var(--touch);
+      min-width: var(--touch);
+      padding: 0 var(--space-3);
+      border: 1.5px solid transparent;
+      border-radius: var(--radius-full);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition:
+        background-color var(--dur-fast) var(--ease),
+        color var(--dur-fast) var(--ease),
+        border-color var(--dur-fast) var(--ease);
     }
     .mic {
-      color: #1d4ed8;
-      border: 2px solid #1d4ed8;
+      background: var(--surface-2);
+      color: var(--ink);
+    }
+    .mic:hover {
+      background: var(--surface-3);
     }
     .mic.recording {
-      color: #a4161a;
-      border-color: #a4161a;
-      background: #fff1f1;
+      background: var(--danger-soft);
+      color: var(--danger);
+      border-color: var(--danger);
     }
     .mic[aria-disabled='true'] {
-      color: #3f3f50;
-      border-color: #5b5b6e;
+      opacity: 0.55;
       cursor: progress;
     }
     .cancel {
-      color: #1a1a2e;
-      border: 2px solid #3f3f50;
+      background: var(--surface);
+      color: var(--ink-2);
+      border-color: var(--line);
+    }
+    .cancel:hover {
+      background: var(--surface-2);
+    }
+    .icon {
+      flex: none;
     }
     .dot {
       width: 0.6rem;
       height: 0.6rem;
       border-radius: 50%;
-      background: #a4161a;
+      background: var(--danger);
       animation: pulse 1.2s ease-in-out infinite;
     }
     @keyframes pulse {
@@ -119,17 +153,38 @@ function describeMicrophoneError(error: unknown): string {
         opacity: 0.25;
       }
     }
+    /* The live region: a line under the field once it has something to say; present from the start, so the first
+       message is announced. */
     .status {
       flex-basis: 100%;
-      color: #3f3f50;
+      order: 10;
+      height: 0;
+      overflow: hidden;
+      padding: 0 var(--space-3);
+      color: var(--ink-3);
+      font-size: var(--text-xs);
+    }
+    .status.shown {
+      height: auto;
+      padding-bottom: var(--space-1);
     }
     .status.error {
-      color: #a4161a;
+      color: var(--danger);
       font-weight: 600;
     }
-    :focus-visible {
-      outline: 3px solid #1d4ed8;
-      outline-offset: 2px;
+    @media (max-width: 599px) {
+      .label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
+      .mic {
+        width: var(--touch);
+        padding: 0;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
       .dot {
@@ -219,7 +274,9 @@ export class DictationButton implements OnDestroy {
       });
       recorder.start();
       this.state.set('recording');
-      this.message.set(`Recording, up to ${this.maxSeconds()} seconds. Press Stop recording when you're done.`);
+      this.message.set(
+        `Recording, up to ${this.maxSeconds()} seconds. Press Stop recording when you're done.`,
+      );
       this.limitTimer = setTimeout(() => this.stop(), this.maxSeconds() * 1000);
     } finally {
       this.starting = false;
@@ -272,7 +329,9 @@ export class DictationButton implements OnDestroy {
       next: ({ text }) => {
         const recognized = text.trim();
         if (!recognized) {
-          this.fail('Nothing was recognized. Try again closer to the microphone, or type your question.');
+          this.fail(
+            'Nothing was recognized. Try again closer to the microphone, or type your question.',
+          );
           return;
         }
         this.state.set('done');

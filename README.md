@@ -61,9 +61,15 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
     The talks that pass are ranked by the attendee's stated interests and their CloudBridge history and bookmarks,
     and every card says why, in reasons you can check. The answer is deterministic. A generated explanation (OpenAI,
     picking only from these cards, every ID checked, this answer as the fallback) isn't built yet.
-  - **"Viewing as"** switches between the eight fictional demo personas. The server looks the persona up from the
-    `X-Demo-Profile-ID` header and trusts nothing else the browser says about her; it is a demo switch, not a
-    sign-in.
+  - **"Viewing as"** switches between the eight fictional demo personas, from the account menu at the top right.
+    The server looks the persona up from the `X-Demo-Profile-ID` header and trusts nothing else the browser says
+    about her; it is a demo switch, not a sign-in.
+- **The attendee portal.** One shell for every feature: the Ask bar centered in the app bar with its inline
+  Search, Where next and Dictate buttons, the persona menu, and a left navigation (a menu button on narrow screens)
+  to Find talks (search, and the archive's cited answer under it), Where next, My agenda (the persona's bookmarks
+  and attended talks), Events (real versus fictional, with counts), Accessibility at the venue (the published access
+  facts with their sources), and How this platform runs (the operations loop, for judges). Keyboard-first, light and
+  dark, down to 320 px wide.
 - **Honest accessibility facts.** Only what the official KubeCon
   [Inclusion + Accessibility page](https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/attend/inclusion-accessibility/)
   publishes (read on November 6, 2026), each shown with its source link: Wordly captioning, reserved seating, quiet
@@ -76,9 +82,10 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   speaker.
 - **Spoken questions.** The microphone next to the Ask bar records up to 60 seconds; `core-api` sends the recording
   to OpenAI's `gpt-transcribe` and the text lands in the Ask bar for review. Nothing is searched until you press
-  Search. A denied microphone or a failed transcription says so, and typing keeps working. The audio is never stored,
-  and neither it nor the text reaches logs or telemetry. Browsers allow the microphone only on HTTPS or `localhost`,
-  and the public URL is plain HTTP today, so dictation works on a local or port-forwarded instance.
+  Search. A denied microphone or a failed transcription says so, and typing keeps working. nginx streams the audio
+  to `core-api`, which holds it in memory; it is never stored, and neither it nor the text reaches logs or
+  telemetry. Browsers allow the microphone only on HTTPS or `localhost`, and the public URL is plain HTTP today, so
+  dictation works on a local or port-forwarded instance.
 - **A persona from the first click, and two actions on every talk card.** A first visit starts as Aisha
   Rahman, the demo's hero (the last pick is remembered in the browser; the server still resolves the persona from
   the header on every request). Every talk card, in search results, Where-next cards and the agenda, has **Add to

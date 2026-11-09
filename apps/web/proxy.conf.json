@@ -1,0 +1,4 @@
+{
+  "/api": { "target": "http://conferenceops-ai.westus3.cloudapp.azure.com", "changeOrigin": true },
+  "/config.json": { "target": "http://conferenceops-ai.westus3.cloudapp.azure.com", "changeOrigin": true }
+}

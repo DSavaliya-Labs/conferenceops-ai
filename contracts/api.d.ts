@@ -25,6 +25,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/conferences": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conferences
+         * @description The events on the platform: the real, current KubeCon and the fictional, concluded CloudBridge Summit.
+         */
+        get: operations["list_conferences_api_v1_conferences_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/conferences/{slug}/access-facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Access Facts
+         * @description The access facts stored for an event, each with its source link and the date it was read (ACCESS-1). Nothing
+         *     is inferred: an event that publishes none gets an empty list, and no route is ever labeled step-free.
+         */
+        get: operations["list_access_facts_api_v1_conferences__slug__access_facts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/demo/profiles": {
         parameters: {
             query?: never;
@@ -60,6 +101,27 @@ export interface paths {
          *     attendee to review and edit in the Ask bar; nothing is searched until they submit (PLAN §9.2).
          */
         post: operations["dictate_api_v1_dictation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/me/agenda": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * My Agenda
+         * @description The persona's bookmarks and the sessions she attended. The persona comes from X-Demo-Profile-ID (AUTHZ-1);
+         *     public fields only, never her preferences (PRIV-1).
+         */
+        get: operations["my_agenda_api_v1_me_agenda_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -214,6 +276,45 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessFactCard */
+        AccessFactCard: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @description captions, reserved_seating, quiet_room, prayer_room, staff_help, mobility_rental
+             */
+            kind: string;
+            /** Location */
+            location?: string | null;
+            /**
+             * Readon
+             * Format: date
+             * @description When the source was read
+             */
+            readOn: string;
+            /**
+             * Sourceurl
+             * @description Where the event publishes it (ACCESS-1)
+             */
+            sourceUrl: string;
+            /**
+             * Text
+             * @description The event's published wording
+             */
+            text: string;
+        };
+        /** AccessFactList */
+        AccessFactList: {
+            /** Conference */
+            conference: string;
+            /** Event */
+            event: string;
+            /** Facts */
+            facts: components["schemas"]["AccessFactCard"][];
+            /** Isfictional */
+            isFictional: boolean;
+        };
         /** AccessStatement */
         AccessStatement: {
             /**
@@ -238,6 +339,57 @@ export interface components {
              * @description The event's published wording, or why it isn't published
              */
             text: string;
+        };
+        /** AgendaEntry */
+        AgendaEntry: {
+            /** Conference */
+            conference: string;
+            /**
+             * Endsat
+             * Format: date-time
+             */
+            endsAt: string;
+            /** Event */
+            event: string;
+            /** Isfictional */
+            isFictional: boolean;
+            /** Level */
+            level?: string | null;
+            /** Room */
+            room?: string | null;
+            /** Sessionid */
+            sessionId: string;
+            /**
+             * Startsat
+             * Format: date-time
+             */
+            startsAt: string;
+            /**
+             * Startsatvenue
+             * @description Start in the event's time zone, e.g. 'Tue Nov 10, 10:30 AM MST'
+             */
+            startsAtVenue: string;
+            /** Title */
+            title: string;
+            /** Topics */
+            topics?: string[];
+        };
+        /** AgendaResponse */
+        AgendaResponse: {
+            /**
+             * Attended
+             * @description Sessions she attended, at any event
+             */
+            attended: components["schemas"]["AgendaEntry"][];
+            /**
+             * Bookmarked
+             * @description A bookmark is a personal plan; it never reserves a seat
+             */
+            bookmarked: components["schemas"]["AgendaEntry"][];
+            /** Displayname */
+            displayName: string;
+            /** Profileid */
+            profileId: string;
         };
         /** AskRequest */
         AskRequest: {
@@ -391,6 +543,58 @@ export interface components {
              * @description What went wrong, in words
              */
             detail: string;
+        };
+        /** EventCard */
+        EventCard: {
+            counts: components["schemas"]["EventCounts"];
+            /**
+             * Endson
+             * Format: date
+             */
+            endsOn: string;
+            /** Hastranscripts */
+            hasTranscripts: boolean;
+            /**
+             * Isfictional
+             * @description True for CloudBridge Summit, the fictional demo event
+             */
+            isFictional: boolean;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Startson
+             * Format: date
+             */
+            startsOn: string;
+            /**
+             * Timezone
+             * @description The venue's IANA time zone, e.g. America/Denver (TIME-1)
+             */
+            timezone: string;
+        };
+        /** EventCounts */
+        EventCounts: {
+            /**
+             * Accessfacts
+             * @description Published access facts stored for the event (ACCESS-1)
+             */
+            accessFacts: number;
+            /** Rooms */
+            rooms: number;
+            /**
+             * Sessions
+             * @description Talks; service sessions such as breaks aren't counted
+             */
+            sessions: number;
+            /** Speakers */
+            speakers: number;
+        };
+        /** EventList */
+        EventList: {
+            /** Events */
+            events: components["schemas"]["EventCard"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -730,6 +934,84 @@ export interface operations {
             };
         };
     };
+    list_conferences_api_v1_conferences_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventList"];
+                };
+            };
+            /** @description Events aren't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    list_access_facts_api_v1_conferences__slug__access_facts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessFactList"];
+                };
+            };
+            /** @description No event has that slug */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Access facts aren't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
     list_demo_profiles_api_v1_demo_profiles_get: {
         parameters: {
             query?: never;
@@ -818,6 +1100,65 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    my_agenda_api_v1_me_agenda_get: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgendaResponse"];
+                };
+            };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No selectable persona has that ID */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The agenda isn't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
             };
         };
     };
