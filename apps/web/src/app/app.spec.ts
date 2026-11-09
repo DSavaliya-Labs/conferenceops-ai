@@ -116,6 +116,28 @@ describe('App shell', () => {
     expect(document.activeElement).toBe(view.el.querySelector('#main'));
     view.http.expectOne('/config.json');
   });
+
+  it('does not carry a canceled navigation focus request into a later Ask-bar search', async () => {
+    const view = await start();
+    await navigate(view, '/events');
+    view.router.resetConfig(
+      view.router.config.map((route) =>
+        route.path === 'operations' ? { ...route, canActivate: [() => false] } : route,
+      ),
+    );
+
+    const link = Array.from(view.el.querySelectorAll<HTMLAnchorElement>('#site-nav a')).find((a) =>
+      a.textContent?.includes('How this platform runs'),
+    )!;
+    link.click();
+    await settle(view);
+    expect(view.router.url).toBe('/events');
+
+    await ask(view, 'security');
+    view.http.expectOne('/api/v1/search');
+    expect(view.router.url).toBe('/talks');
+    expect(document.activeElement).not.toBe(view.el.querySelector('#main'));
+  });
 });
 
 describe('The Ask bar', () => {

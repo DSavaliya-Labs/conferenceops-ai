@@ -1,6 +1,15 @@
 import { DOCUMENT, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import {
+  NavigationCancel,
+  NavigationEnd,
+  NavigationError,
+  NavigationSkipped,
+  Router,
+  RouterLink,
+  RouterLinkActive,
+  RouterOutlet,
+} from '@angular/router';
 import { filter } from 'rxjs';
 
 import { IconName, Icon } from './icons';
@@ -51,13 +60,22 @@ export class App {
     this.personas.load();
     inject(Router)
       .events.pipe(
-        filter((event) => event instanceof NavigationEnd),
+        filter(
+          (event) =>
+            event instanceof NavigationEnd ||
+            event instanceof NavigationSkipped ||
+            event instanceof NavigationCancel ||
+            event instanceof NavigationError,
+        ),
         takeUntilDestroyed(),
       )
-      .subscribe(() => {
+      .subscribe((event) => {
         this.navOpen.set(false);
-        if (this.focusMainAfterNavigation) {
-          this.focusMainAfterNavigation = false;
+        const focus =
+          this.focusMainAfterNavigation &&
+          (event instanceof NavigationEnd || event instanceof NavigationSkipped);
+        this.focusMainAfterNavigation = false;
+        if (focus) {
           this.document.getElementById('main')?.focus();
         }
       });
