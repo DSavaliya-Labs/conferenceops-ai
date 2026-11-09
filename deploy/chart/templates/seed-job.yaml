@@ -1,0 +1,47 @@
+# Seeds the CloudBridge Summit archive (`python -m conferenceops.cloudbridge`) once the schema is migrated: on install
+# after the migrate Job (a higher hook weight), and after every upgrade. The seed only adds what is missing and never
+# changes a row that exists, so a deploy, the incident fix included, never reverts what organizers or personas
+# changed. Two loads at once wait on an advisory lock. The full reseed (`--reset`) is run by hand, never here
+# (PLAN §6.3).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "co.fullname" . }}-seed
+  labels:
+    {{- include "co.labels" . | nindent 4 }}
+    app.kubernetes.io/component: seed
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "1"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        {{- include "co.selector" . | nindent 8 }}
+        app.kubernetes.io/component: seed
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: seed
+          image: {{ include "co.image" . }}
+          command: [python, -m, conferenceops.cloudbridge]
+          env:
+            {{- include "co.env" . | nindent 12 }}
+          securityContext:
+            {{- include "co.containerSecurity" . | nindent 12 }}
+          resources:
+            requests: {cpu: 50m, memory: 128Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}
