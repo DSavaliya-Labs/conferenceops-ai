@@ -230,5 +230,10 @@ jobs:
           test "$(docker exec web id -u)" != 0
           # An API name that doesn't resolve fails only that request (502); nginx keeps serving.
           test "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST localhost:8081/api/v1/search)" = 502 || { docker logs web; exit 1; }
+          # PRIV-1: verify the rendered dictation location disables buffering and does not spool a large upload to /tmp.
+          docker exec web nginx -T 2>&1 | grep -A4 'location = /api/v1/dictation' | grep -qF 'proxy_request_buffering off;' || { docker logs web; exit 1; }
+          head -c 2000000 /dev/urandom >/tmp/audio.bin
+          curl -s -o /dev/null --max-time 15 --data-binary @/tmp/audio.bin localhost:8081/api/v1/dictation || true
+          ! docker logs web 2>&1 | grep -q 'buffered to a temporary file' || { docker logs web; exit 1; }
           curl -sf localhost:8081/health/ready
           docker rm -f web
