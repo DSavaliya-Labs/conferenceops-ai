@@ -25,8 +25,8 @@ export class AgendaService {
   );
   /** What a card shows before the server confirms: the pressed state of writes in flight or just refused. */
   private readonly pending = signal<ReadonlyMap<string, boolean>>(new Map());
-  /** The session a write is in flight for, so its button waits. */
-  readonly busy = signal<string | null>(null);
+  /** The sessions with a write in flight, so their buttons wait; other cards keep working. */
+  readonly busy = signal<ReadonlySet<string>>(new Set());
   /** One line for a polite live region: what just changed, or what failed. */
   readonly announcement = signal('');
 
@@ -88,30 +88,42 @@ export class AgendaService {
   /** Add or remove one talk for the current persona. */
   toggle(sessionId: string, title: string): void {
     const profileId = this.personas.selectedId();
-    if (!profileId || this.busy()) {
+    if (!profileId || this.busy().has(sessionId)) {
       return;
     }
     const adding = !this.has(sessionId);
     this.pending.update((m) => new Map(m).set(sessionId, adding));
-    this.busy.set(sessionId);
+    this.busy.update((s) => new Set(s).add(sessionId));
     const write = adding
       ? this.portal.bookmark(profileId, sessionId)
       : this.portal.unbookmark(profileId, sessionId);
+    const done = () =>
+      this.busy.update((s) => {
+        const next = new Set(s);
+        next.delete(sessionId);
+        return next;
+      });
     write.subscribe({
       next: () => {
-        this.busy.set(null);
+        done();
+        if (this.personas.selectedId() !== profileId) {
+          return; // the persona changed meanwhile: her agenda is loading, and this result isn't hers
+        }
         this.announcement.set(
           adding ? `Added “${title}” to My Agenda.` : `Removed “${title}” from My Agenda.`,
         );
         this.refresh(profileId, true);
       },
       error: () => {
+        done();
+        if (this.personas.selectedId() !== profileId) {
+          return;
+        }
         this.pending.update((m) => {
           const next = new Map(m);
           next.delete(sessionId);
           return next;
         });
-        this.busy.set(null);
         this.announcement.set(
           adding
             ? `Couldn't add “${title}” to My Agenda right now.`
