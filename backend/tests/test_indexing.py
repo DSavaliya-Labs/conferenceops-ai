@@ -6,7 +6,8 @@ import httpx2
 import openai
 import pytest
 from elastic_transport import ApiResponseMeta, HttpHeaders, NodeConfig
-from elasticsearch import ConflictError, NotFoundError
+from elasticsearch import ApiError, BadRequestError, ConflictError, NotFoundError
+from elasticsearch import ConnectionError as EsConnectionError
 from sqlalchemy.sql import operators
 
 from conferenceops.indexing import (
@@ -20,6 +21,11 @@ from conferenceops.indexing import (
 from conferenceops.models import Conference, OutboxJob, OutboxStatus, Room, Session
 
 NOW = datetime(2026, 11, 10, tzinfo=UTC)
+OPENAI_REQUEST = httpx2.Request("POST", "https://api.openai.com/v1/embeddings")
+
+
+def _openai_error(cls, status):
+    return cls(f"{status}", response=httpx2.Response(status, request=OPENAI_REQUEST), body=None)
 
 
 class _Rows:
@@ -209,7 +215,7 @@ def test_unknown_session_job_kinds_are_failed_not_marked_done():
 
     assert job.status == OutboxStatus.PENDING
     assert job.attempts == 1
-    assert job.last_error == "ValueError"
+    assert job.last_error == "UnknownJobKind"
 
 
 def test_an_index_job_writes_the_session_at_its_revision_with_external_versioning():
@@ -271,8 +277,7 @@ def test_a_rejected_text_fails_only_its_own_job():
 
 def test_the_openai_embedder_reports_a_rejected_input_as_an_input_error():
     def reject(**_):
-        request = httpx2.Request("POST", "https://api.openai.com/v1/embeddings")
-        raise openai.BadRequestError("too long", response=httpx2.Response(400, request=request), body=None)
+        raise _openai_error(openai.BadRequestError, 400)
 
     client = SimpleNamespace(embeddings=SimpleNamespace(create=reject))
 
@@ -281,10 +286,12 @@ def test_the_openai_embedder_reports_a_rejected_input_as_an_input_error():
 
 
 def test_a_job_is_parked_as_failed_only_on_its_last_attempt():
-    jobs, _, db = _indexable(2)
+    jobs, sessions, db = _indexable(2)
+    for session in sessions:
+        session.abstract = "an abstract the model rejects: POISON"
     jobs[0].attempts, jobs[1].attempts = MAX_ATTEMPTS - 2, MAX_ATTEMPTS - 1
 
-    process_outbox(db, _Es(), _Embedder(RuntimeError("provider unavailable")), now=lambda: NOW)
+    process_outbox(db, _Es(), _Embedder(rejects="POISON"), now=lambda: NOW)
 
     assert (jobs[0].attempts, jobs[0].status) == (MAX_ATTEMPTS - 1, OutboxStatus.PENDING)
     assert (jobs[1].attempts, jobs[1].status) == (MAX_ATTEMPTS, OutboxStatus.FAILED)
@@ -300,14 +307,70 @@ def test_the_backoff_doubles_and_is_capped_at_five_minutes():
     assert jobs[1].next_attempt_at == NOW + timedelta(minutes=5)  # 2 ** 9 = 512 s, capped
 
 
-def test_a_model_outage_shorter_than_ten_minutes_never_parks_a_job():
-    # Nothing re-enqueues a FAILED job (an unchanged session enqueues nothing on re-import), so parking jobs after a
-    # short outage would leave those sessions out of search.
-    jobs, _, db = _indexable()
-    clock = NOW
-    while jobs[0].status == OutboxStatus.PENDING:
-        clock = jobs[0].next_attempt_at
-        process_outbox(db, _Es(), _Embedder(RuntimeError("provider unavailable")), now=lambda at=clock: at)
+OUTAGES = {
+    "openai-unreachable": (_Embedder(openai.APIConnectionError(request=OPENAI_REQUEST)), _Es()),
+    "openai-bad-key-401": (_Embedder(_openai_error(openai.AuthenticationError, 401)), _Es()),
+    "openai-quota-429": (_Embedder(_openai_error(openai.RateLimitError, 429)), _Es()),
+    "openai-server-error-500": (_Embedder(_openai_error(openai.InternalServerError, 500)), _Es()),
+    "unrecognized-error": (_Embedder(RuntimeError("provider unavailable")), _Es()),
+    "elasticsearch-unreachable": (_Embedder(), _Es(index_error=EsConnectionError("connection refused"))),
+    "elasticsearch-throttling-429": (_Embedder(), _Es(index_error=_es_error(ApiError, 429))),
+    "elasticsearch-unavailable-503": (_Embedder(), _Es(index_error=_es_error(ApiError, 503))),
+}
 
-    assert jobs[0].attempts == MAX_ATTEMPTS
-    assert clock - NOW >= timedelta(minutes=10)
+
+@pytest.mark.parametrize("embedder, es", OUTAGES.values(), ids=OUTAGES.keys())
+def test_an_outage_never_parks_a_job_and_its_session_is_indexed_once_the_outage_ends(embedder, es):
+    # Nothing re-enqueues a FAILED job (an unchanged session enqueues nothing on re-import). If an outage parked jobs,
+    # their sessions would stay out of search for good, however soon the key or quota was fixed.
+    jobs, sessions, db = _indexable()
+    clock = NOW
+    while clock - NOW < timedelta(minutes=30):
+        clock = jobs[0].next_attempt_at
+        process_outbox(db, es, embedder, now=lambda at=clock: at)
+        assert jobs[0].status == OutboxStatus.PENDING
+    assert jobs[0].attempts > MAX_ATTEMPTS
+    assert jobs[0].next_attempt_at - clock == timedelta(minutes=5)  # retried every 5 minutes, not given up on
+
+    healthy = _Es()
+    indexed = process_outbox(db, healthy, _Embedder(), now=lambda: jobs[0].next_attempt_at)
+
+    assert indexed == 1
+    assert jobs[0].status == OutboxStatus.DONE
+    assert [call["id"] for call in healthy.indexed] == [str(sessions[0].id)]
+
+
+def _rejected_text(jobs, sessions):
+    sessions[0].abstract = "an abstract the model rejects: POISON"
+    return _Embedder(rejects="POISON"), _Es()
+
+
+def _rejected_document(jobs, sessions):
+    return _Embedder(), _Es(index_error=_es_error(BadRequestError, 400))
+
+
+def _unknown_kind(jobs, sessions):
+    jobs[0].kind = "reindex-everything"
+    return _Embedder(), _Es()
+
+
+@pytest.mark.parametrize("own_failure", [_rejected_text, _rejected_document, _unknown_kind])
+def test_a_job_that_fails_for_its_own_reason_is_parked_after_max_attempts(own_failure):
+    jobs, sessions, db = _indexable()
+    embedder, es = own_failure(jobs, sessions)
+
+    while jobs[0].status == OutboxStatus.PENDING:
+        process_outbox(db, es, embedder, now=lambda at=jobs[0].next_attempt_at: at)
+
+    assert (jobs[0].status, jobs[0].attempts) == (OutboxStatus.FAILED, MAX_ATTEMPTS)
+
+
+def test_a_job_failing_through_a_long_outage_still_backs_off_five_minutes():
+    # A day-long outage is about 300 failures; 2 ** attempts seconds must not overflow timedelta.
+    jobs, _, db = _indexable()
+    jobs[0].attempts = 1000
+
+    process_outbox(db, _Es(), _Embedder(RuntimeError("provider unavailable")), now=lambda: NOW)
+
+    assert (jobs[0].status, jobs[0].attempts) == (OutboxStatus.PENDING, 1001)
+    assert jobs[0].next_attempt_at == NOW + timedelta(minutes=5)

@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 import openai
-from elasticsearch import ConflictError, Elasticsearch, NotFoundError
+from elasticsearch import BadRequestError, ConflictError, Elasticsearch, NotFoundError
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -23,8 +23,10 @@ ALIAS = "co-sessions"
 INDEX = "co-sessions-v1"
 DIMENSIONS = 1536
 ENTITY = "session"  # the only outbox entity type this loop leases; other entity types wait for their own consumer
-# The backoff doubles from 2 seconds up to 5 minutes, so a job is parked as FAILED only after about 13 minutes of
-# failures: long enough to ride out a model or Elasticsearch outage, short enough to surface a job that never succeeds.
+# A failing job retries with a backoff that doubles from 2 seconds up to 5 minutes. An outage never parks a job: while
+# OpenAI or Elasticsearch is down, slow, out of quota or refusing the key, every job keeps retrying every 5 minutes, and
+# is indexed once the provider is back. Only a failure of the job itself (see `_is_own_failure`) parks it as FAILED,
+# after MAX_ATTEMPTS failures, about 13.5 minutes: retrying the same text or document can't help.
 MAX_ATTEMPTS = 10
 MAX_BACKOFF = timedelta(minutes=5)
 
@@ -50,6 +52,10 @@ MAPPING = {
 class EmbeddingInputError(ValueError):
     """The model rejected an input (too long, for example). Retrying the same text can't help, and the other texts in
     its batch shouldn't fail with it."""
+
+
+class UnknownJobKind(ValueError):
+    """A session job whose kind this consumer doesn't handle. It is never marked done."""
 
 
 class Embedder(Protocol):
@@ -84,12 +90,32 @@ def embedding_text(session: Session) -> str:
     return f"{session.title}\n\n{session.abstract or ''}".strip()
 
 
+def _is_own_failure(exc: Exception) -> bool:
+    """Whether the job itself failed, so that retrying it can't help: the model rejected its text, Elasticsearch
+    rejected its document (400), or its kind is unknown. Anything else is an outage that a later retry gets past:
+    OpenAI or Elasticsearch unreachable or timing out, a bad key (401, 403), quota or throttling (429), server errors
+    (5xx), and errors we don't recognize."""
+    return isinstance(exc, EmbeddingInputError | BadRequestError | UnknownJobKind)
+
+
+def _backoff(attempts: int) -> timedelta:
+    # The exponent is bounded, so a job that keeps failing through a long outage can't overflow timedelta.
+    return min(timedelta(seconds=2 ** min(attempts, 16)), MAX_BACKOFF)
+
+
 def _fail(job: OutboxJob, exc: Exception, now: Callable[[], datetime]) -> None:
+    """Count the failure and back off. Only the job's own failure parks it, and only once it has failed MAX_ATTEMPTS
+    times: nothing re-enqueues a parked job (an unchanged session enqueues nothing on re-import), so an outage must
+    never park one."""
     job.attempts += 1
     job.last_error = type(exc).__name__
-    job.status = OutboxStatus.FAILED if job.attempts >= MAX_ATTEMPTS else OutboxStatus.PENDING
-    job.next_attempt_at = now() + min(timedelta(seconds=2**job.attempts), MAX_BACKOFF)
-    log.warning("indexing job failed", extra={"job": str(job.id), "attempts": job.attempts})
+    parked = _is_own_failure(exc) and job.attempts >= MAX_ATTEMPTS
+    job.status = OutboxStatus.FAILED if parked else OutboxStatus.PENDING
+    job.next_attempt_at = now() + _backoff(job.attempts)
+    log.warning(
+        "indexing job failed",
+        extra={"job": str(job.id), "attempts": job.attempts, "error": job.last_error, "parked": parked},
+    )
 
 
 def _embed(embedder: Embedder, sessions: Sequence[Session]) -> dict[uuid.UUID, list[float] | Exception]:
@@ -175,7 +201,7 @@ def process_outbox(
                         version_type="external_gte",
                     )
             elif job.kind != "index":
-                raise ValueError("unsupported outbox job kind")
+                raise UnknownJobKind("unsupported outbox job kind")
             elif session is not None:  # a session deleted since the job was written has nothing left to index
                 es.index(
                     index=ALIAS,
