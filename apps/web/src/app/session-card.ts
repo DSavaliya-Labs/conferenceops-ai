@@ -69,7 +69,11 @@ export interface SessionSummary {
         </ul>
       }
       <p class="actions">
-        <app-agenda-button [sessionId]="session().id" [title]="session().title" />
+        <app-agenda-button
+          [sessionId]="session().id"
+          [title]="session().title"
+          [announce]="announceAgendaChange()"
+        />
         <app-read-aloud-button
           [id]="'session-' + session().id"
           [text]="speech()"
@@ -141,5 +145,6 @@ export interface SessionSummary {
 })
 export class SessionCard {
   readonly session = input.required<SessionSummary>();
+  readonly announceAgendaChange = input(true);
   protected readonly speech = computed(() => sessionSpeech(this.session()));
 }

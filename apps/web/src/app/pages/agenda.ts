@@ -1,4 +1,12 @@
-import { Component, computed, inject } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterRenderEffect,
+  computed,
+  inject,
+  signal,
+  untracked,
+} from '@angular/core';
 
 import { AgendaService } from '../agenda-state';
 import { Icon } from '../icons';
@@ -61,15 +69,20 @@ import { SessionCard, SessionSummary } from '../session-card';
         @case ('done') {
           @if (agenda(); as a) {
             <section class="group" aria-labelledby="bookmarked-heading">
-              <h2 id="bookmarked-heading">
+              <h2 id="bookmarked-heading" tabindex="-1">
                 Bookmarked <span class="count">{{ a.bookmarked.length }}</span>
               </h2>
               @if (a.bookmarked.length === 0) {
                 <p class="muted">{{ a.displayName }} hasn't bookmarked a talk yet.</p>
               } @else {
-                <ol class="list bookmarked">
+                <ol class="list bookmarked" (focusin)="rememberBookmarkFocus($event)">
                   @for (entry of a.bookmarked; track entry.sessionId) {
-                    <li><app-session-card [session]="summary(entry)" /></li>
+                    <li [attr.data-session-id]="entry.sessionId">
+                      <app-session-card
+                        [session]="summary(entry)"
+                        [announceAgendaChange]="false"
+                      />
+                    </li>
                   }
                 </ol>
               }
@@ -83,7 +96,12 @@ import { SessionCard, SessionSummary } from '../session-card';
               } @else {
                 <ol class="list attended">
                   @for (entry of a.attended; track entry.sessionId) {
-                    <li><app-session-card [session]="summary(entry)" /></li>
+                    <li>
+                      <app-session-card
+                        [session]="summary(entry)"
+                        [announceAgendaChange]="false"
+                      />
+                    </li>
                   }
                 </ol>
               }
@@ -118,12 +136,37 @@ import { SessionCard, SessionSummary } from '../session-card';
 export class AgendaPage {
   protected readonly personas = inject(PersonaService);
   private readonly shared = inject(AgendaService);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly focusedBookmark = signal<string | null>(null);
+
+  constructor() {
+    afterRenderEffect(() => {
+      const message = this.shared.announcement();
+      const sessionId = this.focusedBookmark();
+      const stillBookmarked = this.agenda()?.bookmarked.some(
+        (entry) => entry.sessionId === sessionId,
+      );
+      if (!message.startsWith('Removed “') || !sessionId || stillBookmarked) {
+        return;
+      }
+      const document = this.host.nativeElement.ownerDocument;
+      if (document.activeElement !== document.body) {
+        return;
+      }
+      untracked(() => this.focusedBookmark.set(null));
+      this.host.nativeElement.querySelector<HTMLElement>('#bookmarked-heading')?.focus();
+    });
+  }
 
   /** One load per persona, shared with the quick-add buttons on every card (AgendaService). */
   protected readonly status = this.shared.status;
   protected readonly agenda = this.shared.agenda;
 
   protected readonly announcement = computed(() => {
+    const message = this.shared.announcement();
+    if (message) {
+      return message;
+    }
     const a = this.agenda();
     switch (this.status()) {
       case 'loading':
@@ -136,6 +179,16 @@ export class AgendaPage {
         return '';
     }
   });
+
+  protected rememberBookmarkFocus(event: FocusEvent): void {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    this.focusedBookmark.set(
+      target.closest<HTMLElement>('.bookmarked [data-session-id]')?.dataset['sessionId'] ?? null,
+    );
+  }
 
   protected load(): void {
     this.shared.refresh();

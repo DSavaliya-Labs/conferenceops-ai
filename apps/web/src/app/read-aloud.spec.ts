@@ -4,14 +4,19 @@ import { TestBed } from '@angular/core/testing';
 import { ReadAloudButton, ReadAloudService, sessionSpeech } from './read-aloud';
 import { text } from './test-support';
 
+type FakeVoice = { name: string; lang: string; localService: boolean };
+
+const LOCAL_VOICE: FakeVoice = { name: 'On-device English', lang: 'en-US', localService: true };
+
 class FakeUtterance {
   lang = '';
+  voice: FakeVoice | null = null;
   onend: (() => void) | null = null;
   onerror: (() => void) | null = null;
   constructor(readonly text: string) {}
 }
 
-function fakeSynth() {
+function fakeSynth(voices: FakeVoice[] = [LOCAL_VOICE]) {
   const spoken: FakeUtterance[] = [];
   let cancels = 0;
   (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance =
@@ -21,6 +26,7 @@ function fakeSynth() {
     cancel: () => {
       cancels += 1;
     },
+    getVoices: () => voices,
   };
   return { spoken, cancels: () => cancels };
 }
@@ -59,7 +65,8 @@ describe('Read aloud', () => {
   });
 
   it('speaks the card with the browser, names what it reads, and stops on the second press', () => {
-    const synth = fakeSynth();
+    const remote: FakeVoice = { name: 'Network English', lang: 'en-US', localService: false };
+    const synth = fakeSynth([remote, LOCAL_VOICE]);
     const { fixture, buttons } = render();
     expect(text(buttons()[0])).toContain('Read aloud');
     expect(text(buttons()[0])).toContain('the first talk');
@@ -67,12 +74,27 @@ describe('Read aloud', () => {
     fixture.detectChanges();
     expect(synth.spoken.map((u) => u.text)).toEqual(['First talk. Tuesday 10:30.']);
     expect(synth.spoken[0].lang).toBe('en-US');
+    expect(synth.spoken[0].voice).toBe(LOCAL_VOICE);
     expect(buttons()[0].getAttribute('aria-pressed')).toBe('true');
     expect(text(buttons()[0])).toContain('Stop reading');
     buttons()[0].click();
     fixture.detectChanges();
     expect(synth.cancels()).toBeGreaterThan(0);
     expect(buttons()[0].getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('does not speak when only network voices are available', () => {
+    const synth = fakeSynth([
+      { name: 'Network English', lang: 'en-US', localService: false },
+      { name: 'Network French', lang: 'fr-FR', localService: false },
+    ]);
+    const { fixture, buttons } = render();
+    buttons()[0].click();
+    fixture.detectChanges();
+
+    expect(synth.spoken).toHaveLength(0);
+    expect(buttons()[0].getAttribute('aria-pressed')).toBe('false');
+    expect(TestBed.inject(ReadAloudService).speaking()).toBeNull();
   });
 
   it('reads one card at a time: starting another cancels the first', () => {

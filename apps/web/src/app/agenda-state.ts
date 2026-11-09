@@ -62,6 +62,7 @@ export class AgendaService {
       // A new persona (or a retry): nothing optimistic from before applies to her.
       this.agenda.set(null);
       this.pending.set(new Map());
+      this.announcement.set('');
     }
     if (!id) {
       this.status.set('none');
@@ -78,6 +79,9 @@ export class AgendaService {
         this.status.set('done');
       },
       error: (error: unknown) => {
+        if (keep) {
+          return; // the write succeeded; keep the last list and the optimistic state
+        }
         this.agenda.set(null);
         this.pending.set(new Map());
         this.status.set(

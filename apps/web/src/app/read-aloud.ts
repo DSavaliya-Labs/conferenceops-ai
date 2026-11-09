@@ -16,9 +16,12 @@ export function sessionSpeech(s: SessionSummary): string {
   return parts.filter(Boolean).join('. ') + '.';
 }
 
+type LocalVoice = { localService: boolean; lang: string };
+
 type Synth = {
   speak(utterance: unknown): void;
   cancel(): void;
+  getVoices(): LocalVoice[];
 };
 
 /** Reads a card aloud with the browser's own speech synthesis (Web Speech API): the text never leaves the device,
@@ -44,12 +47,20 @@ export class ReadAloudService {
       this.stop();
       return;
     }
+    const voices = synth.getVoices();
+    const local =
+      voices.find((voice) => voice.localService && voice.lang === 'en-US') ??
+      voices.find((voice) => voice.localService);
+    if (!local) {
+      return; // no on-device voice: don't send text to a network voice (PRIV-1)
+    }
     synth.cancel();
     const Utterance = (
       window as unknown as { SpeechSynthesisUtterance: new (t: string) => UtteranceLike }
     ).SpeechSynthesisUtterance;
     const utterance = new Utterance(text);
     utterance.lang = 'en-US';
+    utterance.voice = local;
     utterance.onend = () => this.speaking.update((current) => (current === id ? null : current));
     utterance.onerror = utterance.onend;
     this.speaking.set(id);
@@ -64,6 +75,7 @@ export class ReadAloudService {
 
 interface UtteranceLike {
   lang: string;
+  voice: LocalVoice | null;
   onend: (() => void) | null;
   onerror: (() => void) | null;
 }
