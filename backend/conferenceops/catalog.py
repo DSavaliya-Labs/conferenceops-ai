@@ -34,7 +34,9 @@ def upsert_session(db: DbSession, data: SessionData) -> tuple[Session, bool]:
     """Insert or update a session by (conference, external ID). Returns the row and whether anything changed.
     An unchanged session keeps its revision and enqueues nothing, so re-running an import is free."""
     row = db.scalars(
-        select(Session).where(Session.conference_id == data.conference_id, Session.external_id == data.external_id)
+        select(Session)
+        .where(Session.conference_id == data.conference_id, Session.external_id == data.external_id)
+        .with_for_update()
     ).one_or_none()
     if row is None:
         row = Session(conference_id=data.conference_id, external_id=data.external_id, revision=1)
