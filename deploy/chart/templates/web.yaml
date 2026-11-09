@@ -1,0 +1,98 @@
+# The attendee web app, the public entry point: nginx (nginxinc/nginx-unprivileged, user 101, :8080) serves the
+# Angular app and /config.json, and proxies /api to core and discovery. Its probes are static nginx locations, so they
+# never wait on the APIs (K8S-1).
+{{- $fullname := include "co.fullname" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "co.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  strategy:
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
+  selector:
+    matchLabels:
+      {{- include "co.selector" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "co.selector" . | nindent 8 }}
+        app.kubernetes.io/component: web
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101  # the image's nginx user
+        runAsGroup: 101
+        seccompProfile: {type: RuntimeDefault}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/component: web
+      containers:
+        - name: web
+          image: {{ include "co.webImage" . }}
+          env:
+            # nginx's resolver ignores resolv.conf search domains, so the API names are fully qualified.
+            - name: CORE_UPSTREAM
+              value: {{ printf "%s-core.%s.svc.cluster.local:80" $fullname .Release.Namespace | quote }}
+            - name: DISCOVERY_UPSTREAM
+              value: {{ printf "%s-discovery.%s.svc.cluster.local:80" $fullname .Release.Namespace | quote }}
+            - name: DASH0_WEB_ENDPOINT
+              value: {{ .Values.web.dash0.endpoint | quote }}
+            - name: DASH0_DATASET
+              value: {{ .Values.web.dash0.dataset | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.environment | quote }}
+            - name: SERVICE_VERSION
+              value: {{ .Values.web.image.tag | quote }}
+            # The only Dash0 token the browser may see: ingest-only (SEC-1). Without it the app runs unmonitored.
+            - name: DASH0_BROWSER_TOKEN
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.secretName }}, key: DASH0_BROWSER_TOKEN, optional: true}
+          ports:
+            - {name: http, containerPort: 8080}
+          readinessProbe:
+            httpGet: {path: /health/ready, port: http}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /health/live, port: http}
+            periodSeconds: 10
+            failureThreshold: 6
+          lifecycle:
+            preStop:
+              sleep: {seconds: 10}  # keep serving while the endpoint is removed, so rollouts don't drop requests
+          securityContext:
+            {{- include "co.containerSecurity" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          # The root filesystem is read-only. The entrypoint renders the nginx config into conf.d at start, and nginx
+          # writes its pid file and proxy temp files under /tmp.
+          volumeMounts:
+            - {name: conf, mountPath: /etc/nginx/conf.d}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: conf, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}-web
+  labels:
+    {{- include "co.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    {{- include "co.selector" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  ports:
+    - {name: http, port: 80, targetPort: http}
