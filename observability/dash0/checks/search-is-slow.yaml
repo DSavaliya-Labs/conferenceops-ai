@@ -1,0 +1,23 @@
+# Attendees wait too long for search results. 1.5 s is the p95 target of the recovery acceptance (PLAN §15.4).
+# Degraded only: slow search still answers, so this check does not start the Agent0 automation.
+apiVersion: dash0.com/v1alpha1
+kind: CheckRule
+id: 8fed603d-1a59-400b-bfa8-d46c8162427d
+name: Search is slow
+expression: |-
+  histogram_quantile(0.95,
+    sum by (service_namespace, service_name) (rate({otel_metric_name="dash0.spans.duration", service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER", http_route="/api/v1/search", http_request_method="POST"}[1m]))
+  ) > $__threshold
+thresholds:
+  degraded: 1.5
+interval: 1m
+for: 2m
+keep_firing_for: 1m
+labels:
+  service: discovery-api
+annotations:
+  summary: '{{ $labels.service_name }}: p95 of POST /api/v1/search is {{ $value | humanizeDuration }}'
+  description: >-
+    The 95th percentile of POST /api/v1/search on discovery-api has been above 1.5 s for 2 minutes. Look at the
+    Elasticsearch and OpenAI calls in slow traces first, then at the discovery replicas and pods.
+enabled: true
