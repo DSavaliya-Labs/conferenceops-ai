@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     import_interval_seconds: float = 1800.0  # how often the worker re-imports the KubeCon feed
+    # Where the worker's loops write their heartbeat files and the liveness probe reads them (worker/liveness.py).
+    worker_heartbeat_dir: str = "/tmp/worker-heartbeat"  # noqa: S108 - the chart's emptyDir, private to the pod
     log_level: str = "INFO"
     host: str = "0.0.0.0"  # noqa: S104 - containers listen on all interfaces; the Kubernetes Service limits exposure
     port: int = 8080
