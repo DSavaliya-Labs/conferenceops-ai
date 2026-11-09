@@ -30,8 +30,9 @@ deploy in turn). Checked by hand at 22:03 UTC:
 **Measured since the first version of this page:** the incident run and its recovery window (below), Radar's
 verify step after #35, and the CloudBridge replays, transcripts and cited answers
 ([#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37), merged as `ec79843` at 21:49 and checked on the
-public URL at 22:03). **Pending** (not claimed): the attendee portal UI pull request
-([#50](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/50)) and a dictation demo on an HTTPS origin. Details
+public URL at 22:03). The attendee portal UI pull request
+([#50](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/50)) is included on this branch, but is not among the
+live checks above (the public URL was checked at `38aefeb`). A dictation demo on an HTTPS origin is **pending**. Details
 under each track and in [Known limitations](#known-limitations).
 
 Live progress: the [Build log](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) (issue #1, one entry per
@@ -86,13 +87,8 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   to `core-api`, which holds it in memory; it is never stored, and neither it nor the text reaches logs or
   telemetry. Browsers allow the microphone only on HTTPS or `localhost`, and the public URL is plain HTTP today, so
   dictation works on a local or port-forwarded instance.
-- **A persona from the first click, and two actions on every talk card.** A first visit starts as Aisha
-  Rahman, the demo's hero (the last pick is remembered in the browser; the server still resolves the persona from
-  the header on every request). Every talk card, in search results, Where-next cards and the agenda, has **Add to
-  My Agenda** (an `aria-pressed` toggle; a bookmark is a personal plan and never reserves a seat; Where-next then
-  excludes talks that clash with it) and **Read aloud**, which reads the card with the browser's own speech
-  synthesis: the text never leaves the device, one card speaks at a time, and a browser without it gets a disabled
-  button that says so. The cited answer has Read aloud too.
+- **Pending: Add to My Agenda and Read aloud on every talk card,** and a default persona remembered in the browser.
+  Not on `main` yet; this line changes when the pull request that adds them merges.
 - **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
   replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
   such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
@@ -273,8 +269,8 @@ One discovery pod, no admission control yet, a k6 Job inside the cluster against
   The `incident-scope` check rejects any change to the limit on an incident pull request (OPS-1).
 - **Calibration after #36 deployed** (21:18–21:22, 90 s each, from the k6 summaries kept by the builder): 64 /s →
   5,760 sent, 14 rejected with `DISCOVERY_CAPACITY_EXHAUSTED` (0.24%), p95 432 ms, every target met; 80 /s → 7,201
-  sent, 1,860 rejected (25.8%), no timeouts, no dropped iterations, p95 of the accepted requests 638 ms. The pod
-  stayed up through both runs: 0 restarts (`kubectl get pods` after each run), unlike the unlimited pod at 96 /s.
+  sent, 1,860 rejected (25.8%), no timeouts, no dropped iterations, p95 of the accepted requests 638 ms. Whether
+  the pod stayed up during the 80 /s run is **pending**; per-run restart counts were not recorded.
 - **The offered peak** for the incident is derived in [`ops/load/README.md`](ops/load/README.md): `T_max` = 21
   talks starting in the same minute (measured from the feed), the rest assumptions; the incident needs
   `1.2 × C_pod ≤ R_test`, so about **80 requests/s**.
