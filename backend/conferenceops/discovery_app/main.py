@@ -11,6 +11,7 @@ from fastapi import Depends, HTTPException
 from openai import OpenAI
 
 from conferenceops.admission import add_admission_control
+from conferenceops.ask import router as ask_router
 from conferenceops.indexing import OpenAIEmbedder
 from conferenceops.search import HybridSearch, PostgresSearchSessions, SearchBackend, SearchRequest, SearchResponse
 from conferenceops.settings import settings
@@ -21,6 +22,7 @@ log = logging.getLogger("conferenceops.discovery")
 
 app = create_app("discovery-api")
 app.include_router(where_next_router)  # POST /api/v1/recommendations/next: "where should I go next?"
+app.include_router(ask_router)  # POST /api/v1/ask: cited answers from published transcripts
 add_admission_control(app, settings())  # per-pod limit on /api/v1 requests in progress; 503 above it (PLAN §15.2)
 
 

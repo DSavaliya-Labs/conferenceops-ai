@@ -36,12 +36,12 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
     and kNN over OpenAI embeddings, with the same filters on both, fused with reciprocal rank fusion (RRF). If
     embeddings are unavailable, search falls back to keywords and says so.
   - **"Where should I go next?"** applies hard rules before any ranking: the talk hasn't started on the venue's
-    clock (`America/Denver`), falls in the chosen window (rest of today, tomorrow morning, or any time), isn't on or
-    clashing with the attendee's agenda, isn't at a level they left out, and has published captioning when they asked
-    for captions. The talks that pass are ranked by the attendee's stated interests and their CloudBridge history and
-    bookmarks, and every card says why, in reasons you can check. The answer is deterministic. A generated
-    explanation (OpenAI, picking only from these cards, every ID checked, this answer as the fallback) isn't built
-    yet.
+    clock (`America/Denver`), falls in the chosen window (rest of today, tomorrow morning, or any time), is open to any
+    attendee (not off-site, sold out, or behind a separate registration), isn't on or clashing with the attendee's
+    agenda, isn't at a level they left out, and has published captioning for its room when they asked for captions.
+    The talks that pass are ranked by the attendee's stated interests and their CloudBridge history and bookmarks,
+    and every card says why, in reasons you can check. The answer is deterministic. A generated explanation (OpenAI,
+    picking only from these cards, every ID checked, this answer as the fallback) isn't built yet.
   - **"Viewing as"** switches between the eight fictional demo personas. The server looks the persona up from the
     `X-Demo-Profile-ID` header and trusts nothing else the browser says about her; it is a demo switch, not a
     sign-in.
@@ -49,9 +49,10 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   [Inclusion + Accessibility page](https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/attend/inclusion-accessibility/)
   publishes (read on November 6, 2026), each shown with its source link: Wordly captioning, reserved seating, quiet
   rooms, a prayer room, wheelchair and scooter rental, and staff help with elevators and other accessibility
-  questions. No event here has route data, so nothing is ever labeled step-free. An attendee who needs step-free
-  routes is told that routes aren't published, and to ask Linux Foundation staff at the registration or information
-  desks.
+  questions. Captioning and reserved seating are stated only for talks in the event's session rooms; on the expo
+  floor, in public areas and off-site they're shown as not published. No event here has route data, so nothing is
+  ever labeled step-free. An attendee who needs step-free routes is told that routes aren't published, and to ask
+  Linux Foundation staff at the registration or information desks.
 - **Real speakers' words stay theirs.** No transcript, quote or live text is ever generated for a real KubeCon
   speaker.
 - **Spoken questions.** The microphone next to the Ask bar records up to 60 seconds; `core-api` sends the recording
@@ -59,6 +60,15 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   Search. A denied microphone or a failed transcription says so, and typing keeps working. The audio is never stored,
   and neither it nor the text reaches logs or telemetry. Browsers allow the microphone only on HTTPS or `localhost`,
   and the public URL is plain HTTP today, so dictation works on a local or port-forwarded instance.
+- **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
+  replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
+  such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
+  **published** transcripts only, by an OpenAI model that may use nothing but the retrieved passages; every citation
+  is checked against the database and links to the replay at that moment, and a slow or failed model call falls
+  back to the best-matching passage, marked as not model-written. A transcript that is still processing says so on
+  its replay page and is neither searchable nor citable until an organizer publishes it
+  (`POST /api/v1/ops/transcripts/{session_id}/publish`, organizer persona required), and even then only once the
+  worker has projected it into Elasticsearch.
 - **An AI operations team.** Dash0 watches what attendees experience. When a check fails, Agent0 investigates and
   opens a fix pull request, Gitar reviews it, and GitHub Actions deploys it to AKS once it merges. Radar's AI SRE
   investigates the cluster. See [the operations loop](#the-operations-loop).

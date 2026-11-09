@@ -17,6 +17,8 @@ from conferenceops.indexing import OpenAIEmbedder, ensure_index, process_outbox
 from conferenceops.kubecon import fetch_feed, import_kubecon
 from conferenceops.settings import Settings, settings
 from conferenceops.telemetry import setup_telemetry
+from conferenceops.transcript_indexing import ensure_index as ensure_transcript_index
+from conferenceops.transcript_indexing import process_transcript_outbox
 from conferenceops.worker.liveness import Liveness
 
 log = logging.getLogger("conferenceops.worker")
@@ -128,7 +130,15 @@ def loops(cfg: Settings) -> list[Loop]:
         with transaction() as db:
             return process_outbox(db, es, embedder)
 
+    def project_transcripts() -> int:
+        ensure_transcript_index(es)
+        with transaction() as db:
+            return process_transcript_outbox(db, es, embedder)
+
     found.append(Loop("indexing", index_batch, OUTBOX_IDLE_SECONDS, OUTBOX_IDLE_SECONDS, OUTBOX_RETRY_MAX_SECONDS))
+    found.append(
+        Loop("transcripts", project_transcripts, OUTBOX_IDLE_SECONDS, OUTBOX_IDLE_SECONDS, OUTBOX_RETRY_MAX_SECONDS)
+    )
     return found
 
 

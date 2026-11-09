@@ -23,6 +23,7 @@ coverage/
 
 # Load tests and evidence scratch
 ops/load/results/
+.cache/
 *.log
 
 # OS and editors

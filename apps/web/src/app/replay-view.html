@@ -1,0 +1,99 @@
+@switch (status()) {
+  @case ('loading') {
+    <p class="hint">Loading the replay…</p>
+  }
+  @case ('missing') {
+    <p class="error" role="alert">This session has no replay.</p>
+  }
+  @case ('error') {
+    <p class="error" role="alert">
+      The replay isn't available right now. Please try again in a moment.
+    </p>
+  }
+  @case ('done') {
+    @if (view(); as v) {
+      <section class="replay" aria-labelledby="replay-heading">
+        <h2 id="replay-heading" #heading tabindex="-1">{{ v.session.title }}</h2>
+        <p class="labels">
+          @if (v.session.isFictional) {
+            <span class="badge">Fictional demo event</span>
+          }
+          <span class="badge">{{ v.media.label }}</span>
+          {{ v.session.event }} · {{ v.session.speakers.join(', ') }} ·
+          {{ v.session.startsAtVenue }}
+        </p>
+        <p class="provenance">
+          A synthesized voice reads text written for the demo; the speaker and the event are
+          fictional. English captions are on.
+        </p>
+
+        @if (mediaUrl(); as media) {
+          <video
+            #player
+            class="player"
+            controls
+            preload="metadata"
+            [src]="media"
+            [attr.aria-label]="'Replay of ' + v.session.title + ' (' + v.media.label + ')'"
+            (loadedmetadata)="onLoadedMetadata()"
+            (play)="onPlay()"
+            (pause)="onPause()"
+            (timeupdate)="onTimeUpdate()"
+          >
+            @if (captionsUrl(); as captions) {
+              <track
+                kind="captions"
+                srclang="en"
+                label="English captions"
+                [src]="captions"
+                default
+              />
+            }
+          </video>
+          <div class="controls">
+            <button type="button" (click)="togglePlayback()">
+              {{ playing() ? 'Pause' : 'Play' }}
+            </button>
+          </div>
+        } @else {
+          <p class="error" role="alert">
+            The replay's media isn't served from this site, so it isn't shown.
+          </p>
+        }
+
+        <section class="transcript" aria-labelledby="transcript-heading">
+          <h3 id="transcript-heading">Transcript</h3>
+          @if (published()) {
+            <div class="panel-controls">
+              <button type="button" [attr.aria-pressed]="following()" (click)="toggleFollowing()">
+                {{ following() ? 'Pause updates' : 'Resume updates' }}
+              </button>
+              <p class="hint">
+                The line being spoken is highlighted while the replay plays. Pausing updates keeps
+                the panel still; the replay keeps playing. Choose a line to jump to it.
+              </p>
+            </div>
+            <ol class="cues">
+              @for (cue of v.transcript.cues; track $index) {
+                <li
+                  [id]="'cue-' + $index"
+                  [class.current]="highlighted() === $index"
+                  [attr.aria-current]="highlighted() === $index ? 'true' : null"
+                >
+                  <button type="button" class="cue" (click)="seek(cue.start)">
+                    <span class="time">{{ clock(cue.start) }}</span> {{ cue.text }}
+                  </button>
+                </li>
+              }
+            </ol>
+          } @else {
+            <p class="processing">
+              <strong>Transcript processing.</strong> It isn't published yet, so it isn't searchable
+              and Ask won't cite it. The replay and its captions are available meanwhile.
+            </p>
+          }
+        </section>
+      </section>
+    }
+  }
+}
