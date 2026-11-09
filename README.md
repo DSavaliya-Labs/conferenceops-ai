@@ -11,29 +11,34 @@ Elasticsearch search, Dash0 observability with Agent0, Radar's AI SRE, and Gitar
 
 <img src="docs/public-url-qr.svg" alt="QR code for http://conferenceops-ai.westus3.cloudapp.azure.com" width="160">
 
-**Public URL: <http://conferenceops-ai.westus3.cloudapp.azure.com>** (AKS, plain HTTP). It serves the version
-`38aefeb`, the merge of [#46](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/46), deployed by
-[run 42707593311](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707593311) at 21:59 (later merges
-deploy in turn). Checked by hand at 22:03 UTC:
+**Public URL: <https://conferenceops-ai.westus3.cloudapp.azure.com>** (AKS; HTTPS with a self-signed certificate
+since [#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57), so the browser warns once; plain HTTP stays
+on at <http://conferenceops-ai.westus3.cloudapp.azure.com>). It serves the version `92fd275`, the merge of
+[#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60), deployed by
+[run 42715764717](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715764717) at 22:55 (later merges
+deploy in turn). Checked by hand at 22:03 UTC, and again over HTTPS at 22:55–22:57 UTC:
 
 | On the public URL | Evidence |
 |---|---|
-| The attendee app (`GET /`) and its `/config.json` | dataset `conferenceops`, environment `aks`, version `38aefeb…` |
+| The attendee app (`GET /`) and its `/config.json`, over HTTPS | dataset `conferenceops`, environment `aks`, version `92fd275…`; the certificate's subject is `CN=conferenceops-ai.westus3.cloudapp.azure.com`, valid from 22:50 UTC for a year; `/health/ready` answers 200 over HTTPS |
 | Hybrid search over both events, `POST /api/v1/search` | "something about eBPF and security" → 10 results, `retrievalMode: hybrid`, from KubeCon and the fictional CloudBridge Summit |
 | The persona switcher, `GET /api/v1/demo/profiles` | 8 personas, every one `isFictional: true` |
 | "Where should I go next?", `POST /api/v1/recommendations/next` | as Aisha: `status: matches`, 5 cards with checkable reasons, 74 talks excluded as `NO_MATCH`, the step-free warning with its source link; an unknown profile gets `404` |
+| Add to My Agenda, `PUT` and `DELETE /api/v1/me/agenda/{session_id}` | as Aisha at 22:55: `PUT` → 204 and the talk appears in `GET /api/v1/me/agenda` (2 → 3 bookmarks), `DELETE` → 204 (back to 2), `DELETE` of an unknown talk → `404 {"detail":"Not found"}` |
 | Admission control on discovery (#32, #36) | one hand-sent search was answered `503 {"code":"DISCOVERY_CAPACITY_EXHAUSTED","retry_after_seconds":1,…}` while the pod was at its limit; the next one got 200 |
 | Cited answers from published transcripts, `POST /api/v1/ask` | "What did the AI SRE agent get wrong at CloudBridge?" → a two-sentence answer with 2 citations into "AI SRE in Practice: What Our Agent Got Wrong", `retrievalMode: hybrid`, `isFictional: true` |
 | Captioned replays | `/media/cloudbridge/clip-1.mp4` (video/mp4, 570 KB) and `clip-1.vtt` (text/vtt), `manifest.json`; clips 2 and 3 alongside |
-| Deploy on every merge, marked in Dash0 | 18 deploy runs by 22:05 UTC: 14 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge, 1 still running ([deploys](#deploys)) |
+| Deploy on every merge, marked in Dash0 | 23 deploy runs by 22:57 UTC: 20 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge ([deploys](#deploys)) |
 
 **Measured since the first version of this page:** the incident run and its recovery window (below), Radar's
 verify step after #35, and the CloudBridge replays, transcripts and cited answers
 ([#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37), merged as `ec79843` at 21:49 and checked on the
-public URL at 22:03). The attendee portal UI pull request
-([#50](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/50)) is included on this branch, but is not among the
-live checks above (the public URL was checked at `38aefeb`). A dictation demo on an HTTPS origin is **pending**. Details
-under each track and in [Known limitations](#known-limitations).
+public URL at 22:03), then the attendee portal ([#50](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/50)),
+HTTPS ([#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57)) and the talk-card actions
+([#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60)), checked over HTTPS at 22:55–22:57. **Pending**
+(not claimed): a spoken question through the microphone on the public URL in a browser (HTTPS makes it possible; the
+builder has verified dictation on a local instance only), and Read aloud heard in a browser (its tests use a fake
+speech synthesis). Details under each track and in [Known limitations](#known-limitations).
 
 Live progress: the [Build log](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) (issue #1, one entry per
 closed pull request) and the
@@ -85,10 +90,20 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   to OpenAI's `gpt-transcribe` and the text lands in the Ask bar for review. Nothing is searched until you press
   Search. A denied microphone or a failed transcription says so, and typing keeps working. nginx streams the audio
   to `core-api`, which holds it in memory; it is never stored, and neither it nor the text reaches logs or
-  telemetry. Browsers allow the microphone only on HTTPS or `localhost`, and the public URL is plain HTTP today, so
-  dictation works on a local or port-forwarded instance.
-- **Pending: Add to My Agenda and Read aloud on every talk card,** and a default persona remembered in the browser.
-  Not on `main` yet; this line changes when the pull request that adds them merges.
+  telemetry. Browsers allow the microphone only on HTTPS or `localhost`; the public URL has served HTTPS since
+  [#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57) (a self-signed certificate: accept the browser's
+  warning once). Verified on a local instance; on the public URL, **pending**.
+- **A persona from the first click, and two actions on every talk card**
+  ([#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60), merged as `92fd275` and deployed). A first visit
+  starts as Aisha Rahman, the demo's hero (the last pick is kept in the browser's `localStorage` as a convenience; the
+  server still resolves the persona from the header on every request). Every talk card, in search results, Where-next
+  cards and the agenda, has **Add to My Agenda** (an `aria-pressed` toggle; `PUT` and `DELETE
+  /api/v1/me/agenda/{session_id}`, idempotent, one `404 Not found` body for an unknown persona or talk; a bookmark is a
+  personal plan and never reserves a seat; Where-next then excludes talks that clash with it) and **Read aloud**, which
+  reads the card with an on-device voice of the browser's speech synthesis: cloud voices are never used, so the text
+  never leaves the device; one card speaks at a time, and a browser without an on-device voice gets a disabled button
+  that says so. The cited answer has Read aloud too. The writes were checked on the public URL at 22:55 (table above);
+  Read aloud is covered by tests against a fake speech synthesis and not yet heard in a browser by the builder.
 - **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
   replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
   such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
@@ -236,7 +251,8 @@ finding no longer appears. The verdict is posted on
 | Nothing step-free | no event has route data, so nothing is labeled step-free. "Where next" returns the warning `STEP_FREE_NOT_PUBLISHED` with the page's URL and tells the attendee to ask Linux Foundation staff (observed live as Aisha) |
 | Hard rules first | [#30](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/30): venue clock, window, agenda clashes, level, and captions when asked for, before any ranking; reasons `INTEREST_MATCH`, `HISTORY_MATCH` ("Similar to … which you attended at CloudBridge Summit 2026"), `BOOKMARK_MATCH`, `CAPTIONS_PUBLISHED` on every card |
 | Keyboard-first app | a skip link, labels, one polite live region ([`app.html`](apps/web/src/app/app.html)), tested in Vitest and in the `ui-smoke-accessibility` CI job; [#7](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/7), [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) |
-| Spoken questions | [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) merged and deployed; the audio and the text never reach logs or spans. A demo on an HTTPS origin: **pending** (the public URL is HTTP, so browsers won't grant the microphone there) |
+| Spoken questions | [#34](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/34) merged and deployed; the audio and the text never reach logs or spans. The public URL serves HTTPS since [#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57), so a browser can grant the microphone there; a spoken question on the public URL: **pending** (verified on a local instance) |
+| Talk-card actions | [#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60) merged and deployed ([run 42715764717](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715764717)): a default persona on the first visit, **Add to My Agenda** as an `aria-pressed` toggle with one polite status line per card (checked live at 22:55: PUT 204, DELETE 204, unknown talk 404), and **Read aloud** with on-device voices only, disabled with an explanation otherwise; the My agenda page keeps focus and announces a removal |
 | Captioned replays and cited Ask | [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) merged and deployed ([run 42706138032](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706138032)): three CloudBridge sessions have simulated replays with WebVTT captions on by default, a pause control and transcript panel, each labeled "Simulated excerpt" and fictional; two transcripts are published and one is still processing. Ask cites only published transcripts; clip 3 starts unpublished and is neither searchable nor citable until an organizer publishes it |
 
 ### Capacity: measured, then enforced
@@ -269,8 +285,11 @@ One discovery pod, no admission control yet, a k6 Job inside the cluster against
   The `incident-scope` check rejects any change to the limit on an incident pull request (OPS-1).
 - **Calibration after #36 deployed** (21:18–21:22, 90 s each, from the k6 summaries kept by the builder): 64 /s →
   5,760 sent, 14 rejected with `DISCOVERY_CAPACITY_EXHAUSTED` (0.24%), p95 432 ms, every target met; 80 /s → 7,201
-  sent, 1,860 rejected (25.8%), no timeouts, no dropped iterations, p95 of the accepted requests 638 ms. Whether
-  the pod stayed up during the 80 /s run is **pending**; per-run restart counts were not recorded.
+  sent, 1,860 rejected (25.8%), no timeouts, no dropped iterations, p95 of the accepted requests 638 ms. The pod
+  stayed up through both runs: Dash0's `k8s.container.restarts` for the discovery container is 0 at every sample
+  from 21:10 to 21:30 (pod `conferenceops-discovery-67f95cc9f6-cz9f5`, the one serving from 21:18;
+  [the query](https://app.dash0.com/goto/metrics/query-builder?org=eff045eb-b10b-426f-850b-a2f3865a10fc&dataset=conferenceops&from=2026-11-09T21%3A10%3A00.000Z&to=2026-11-09T21%3A30%3A00.000Z&query=max+by+%28k8s_pod_name%29+%28%7Botel_metric_name%3D%22k8s.container.restarts%22%2C+k8s_namespace_name%3D%22conferenceops%22%2C+k8s_container_name%3D%22discovery%22%7D%29)),
+  unlike the unlimited pod at 96 /s, which was restarted.
 - **The offered peak** for the incident is derived in [`ops/load/README.md`](ops/load/README.md): `T_max` = 21
   talks starting in the same minute (measured from the feed), the rest assumptions; the incident needs
   `1.2 × C_pod ≤ R_test`, so about **80 requests/s**.
@@ -279,9 +298,9 @@ One discovery pod, no admission control yet, a k6 Job inside the cluster against
 
 Every merge to `main` builds both images and runs `helm upgrade` on AKS
 ([`deploy.yml`](.github/workflows/deploy.yml); Azure sign-in through OIDC, no stored Azure secret), checks that the
-public URL serves the app, its config and a search, and marks the deploy in Dash0. There were 18 deploy runs on
-November 9; run #18 was in progress at the latest check. At 22:03 the public URL reported `38aefeb`, the successful #46 deployment (see
-above):
+public URL serves the app, its config and a search (over HTTP and, since #57, HTTPS), and marks the deploy in
+Dash0. There were 23 deploy runs on November 9 by 22:57 UTC: 20 succeeded, 1 failed, 2 were cancelled by a newer
+merge. At 22:57 the public URL reported `92fd275`, the #60 deployment (see above):
 
 | Run | Commit | What happened |
 |---|---|---|
@@ -296,7 +315,11 @@ above):
 | [42706652771](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42706652771) | `5179c01` (#39) | open-session recommendations: success; version reported by the public config |
 | [42707593311](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707593311) | `38aefeb` (#46) | success |
 | [42707926975](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707926975) | `9db96c0` | cancelled when a newer merge started |
-| [42707940834](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707940834) | `02dffaf` | in progress at the 22:05 UTC check; later merges (#47 and #48) deployed in turn |
+| [42707940834](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42707940834) | `02dffaf` (#47) | success (in progress at the 22:05 UTC check) |
+| [42708600933](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42708600933), [42708786554](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42708786554) | `3209d22` (#50), `d64e49c` (#51) | the attendee portal and its review follow-up: success |
+| [42714919007](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42714919007) | `e2d0be9` (#59) | the submission write-up: success |
+| [42715175425](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715175425) | `571d09d` (#57) | HTTPS: the run created the self-signed certificate Secret once, and its check passed over `https://` as well as `http://` |
+| [42715764717](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715764717) | `92fd275` (#60) | the talk-card actions: success; the agenda writes checked on the public URL at 22:55 |
 
 ## Architecture
 
@@ -445,8 +468,10 @@ flowchart TB
   each), two published transcripts and one still processing; [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37)
   merged the feature. Clip 3 starts unpublished and is neither searchable nor citable until an organizer publishes it.
   These are fictional demo excerpts, not KubeCon content or full talks.
-- **Dictation needs HTTPS.** The public URL is plain HTTP, so the microphone works only on a local or port-forwarded
-  instance.
+- **The certificate is self-signed.** The public URL serves HTTPS ([#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57))
+  with a certificate the deploy generates once (valid for a year, not renewed automatically), so browsers warn before
+  the first visit; a managed certificate needs a domain the builder controls, which the `cloudapp.azure.com` name
+  isn't. Plain HTTP stays on. Dictation on the public URL hasn't been exercised in a browser by the builder.
 - **Telemetry gaps.** OpenAI and PostgreSQL calls aren't traced (a failure there shows in discovery-api's logs), the
   dashboard doesn't separate admission rejections from other 503s, there are no CPU or memory panels, and no
   notification channel: nobody is paged.
