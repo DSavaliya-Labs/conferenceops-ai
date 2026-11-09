@@ -39,7 +39,7 @@ and shows a platform run by an AI operations team.
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
 | `contracts/` | Committed OpenAPI schema and the generated Angular client |
-| `seed/` | The CloudBridge Summit fixture and its media and caption files |
+| `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it |
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
 | `ops/load/` | k6 load tests |
