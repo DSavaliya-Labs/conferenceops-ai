@@ -25,8 +25,8 @@ export class AgendaService {
   );
   /** What a card shows before the server confirms: the pressed state of writes in flight or just refused. */
   private readonly pending = signal<ReadonlyMap<string, boolean>>(new Map());
-  /** The session a write is in flight for, so its button waits. */
-  readonly busy = signal<string | null>(null);
+  /** Sessions with writes in flight, so each card can wait independently. */
+  readonly busy = signal<ReadonlySet<string>>(new Set());
   /** One line for a polite live region: what just changed, or what failed. */
   readonly announcement = signal('');
 
@@ -60,9 +60,10 @@ export class AgendaService {
     this.request?.unsubscribe();
     if (!keep) {
       this.agenda.set(null);
+      this.pending.set(new Map());
+      this.busy.set(new Set());
     }
     if (!id) {
-      this.pending.set(new Map());
       this.status.set('none');
       return;
     }
@@ -72,12 +73,18 @@ export class AgendaService {
     this.request = this.portal.agenda(id).subscribe({
       next: (agenda) => {
         this.agenda.set(agenda);
-        this.pending.set(new Map());
+        const inFlight = this.busy();
+        this.pending.update(
+          (pending) => new Map([...pending].filter(([sessionId]) => inFlight.has(sessionId))),
+        );
         this.status.set('done');
       },
       error: (error: unknown) => {
         this.agenda.set(null);
-        this.pending.set(new Map());
+        const inFlight = this.busy();
+        this.pending.update(
+          (pending) => new Map([...pending].filter(([sessionId]) => inFlight.has(sessionId))),
+        );
         this.status.set(
           error instanceof HttpErrorResponse && error.status === 404 ? 'missing' : 'error',
         );
@@ -88,30 +95,44 @@ export class AgendaService {
   /** Add or remove one talk for the current persona. */
   toggle(sessionId: string, title: string): void {
     const profileId = this.personas.selectedId();
-    if (!profileId || this.busy()) {
+    if (!profileId || this.busy().has(sessionId)) {
       return;
     }
     const adding = !this.has(sessionId);
     this.pending.update((m) => new Map(m).set(sessionId, adding));
-    this.busy.set(sessionId);
+    this.busy.update((busy) => new Set(busy).add(sessionId));
     const write = adding
       ? this.portal.bookmark(profileId, sessionId)
       : this.portal.unbookmark(profileId, sessionId);
     write.subscribe({
       next: () => {
-        this.busy.set(null);
+        if (this.personas.selectedId() !== profileId) {
+          return;
+        }
+        this.busy.update((busy) => {
+          const next = new Set(busy);
+          next.delete(sessionId);
+          return next;
+        });
         this.announcement.set(
           adding ? `Added “${title}” to My Agenda.` : `Removed “${title}” from My Agenda.`,
         );
         this.refresh(profileId, true);
       },
       error: () => {
+        if (this.personas.selectedId() !== profileId) {
+          return;
+        }
         this.pending.update((m) => {
           const next = new Map(m);
           next.delete(sessionId);
           return next;
         });
-        this.busy.set(null);
+        this.busy.update((busy) => {
+          const next = new Set(busy);
+          next.delete(sessionId);
+          return next;
+        });
         this.announcement.set(
           adding
             ? `Couldn't add “${title}” to My Agenda right now.`

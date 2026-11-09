@@ -6,17 +6,22 @@ import { TestBed } from '@angular/core/testing';
 import { AgendaButton } from './agenda-button';
 import { AgendaService } from './agenda-state';
 import { PersonaService } from './personas';
-import { AISHA, text } from './test-support';
+import { AISHA, TOMAS, text } from './test-support';
 
 const AGENDA_URL = '/api/v1/me/agenda';
 const TALK = { id: 'talk-1', title: 'Tracing LLM Calls in Production' };
+const OTHER_TALK = { id: 'talk-2', title: 'Reliable Event-Driven Systems' };
 
 @Component({
   imports: [AgendaButton],
-  template: `<app-agenda-button [sessionId]="talk().id" [title]="talk().title" />`,
+  template: `
+    <app-agenda-button [sessionId]="talk().id" [title]="talk().title" />
+    <app-agenda-button [sessionId]="otherTalk.id" [title]="otherTalk.title" />
+  `,
 })
 class Host {
   readonly talk = signal(TALK);
+  readonly otherTalk = OTHER_TALK;
 }
 
 function setUp(bookmarked: string[] = []) {
@@ -25,7 +30,7 @@ function setUp(bookmarked: string[] = []) {
     providers: [provideHttpClient(), provideHttpClientTesting()],
   });
   const personas = TestBed.inject(PersonaService);
-  personas.personas.set([AISHA]);
+  personas.personas.set([AISHA, TOMAS]);
   personas.select(AISHA.id);
   const fixture = TestBed.createComponent(Host);
   fixture.detectChanges();
@@ -39,8 +44,10 @@ function setUp(bookmarked: string[] = []) {
   });
   fixture.detectChanges();
   const button = () => fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+  const otherButton = () =>
+    fixture.nativeElement.querySelectorAll('button')[1] as HTMLButtonElement;
   const status = () => fixture.nativeElement.querySelector('[role="status"]') as HTMLElement;
-  return { fixture, http, button, status, agenda: TestBed.inject(AgendaService) };
+  return { fixture, http, button, otherButton, status, agenda: TestBed.inject(AgendaService) };
 }
 
 describe('Quick add to My Agenda', () => {
@@ -78,6 +85,80 @@ describe('Quick add to My Agenda', () => {
     fixture.detectChanges();
     expect(text(button())).toContain('In My Agenda');
     expect(text(status())).toContain(`Added “${TALK.title}” to My Agenda.`);
+  });
+
+  it('allows a different card to be updated while another card write is in flight', () => {
+    const { fixture, http, button, otherButton, agenda } = setUp();
+    button().click();
+    fixture.detectChanges();
+    const firstWrite = http.expectOne(`${AGENDA_URL}/${TALK.id}`);
+    expect(button().disabled).toBe(true);
+    expect(otherButton().disabled).toBe(false);
+
+    otherButton().click();
+    fixture.detectChanges();
+    const secondWrite = http.expectOne(`${AGENDA_URL}/${OTHER_TALK.id}`);
+    expect(secondWrite.request.method).toBe('PUT');
+    expect(secondWrite.request.headers.get('X-Demo-Profile-ID')).toBe(AISHA.id);
+    expect(otherButton().disabled).toBe(true);
+
+    firstWrite.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    expect(button().disabled).toBe(false);
+    expect(otherButton().disabled).toBe(true);
+    http.expectOne(AGENDA_URL).flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: [{ sessionId: TALK.id }],
+      attended: [],
+    });
+    fixture.detectChanges();
+    expect(otherButton().getAttribute('aria-pressed')).toBe('true');
+
+    secondWrite.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    expect(agenda.busy().size).toBe(0);
+    http.expectOne(AGENDA_URL).flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: [{ sessionId: TALK.id }, { sessionId: OTHER_TALK.id }],
+      attended: [],
+    });
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('true');
+    expect(otherButton().getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('ignores a write completion after switching personas', () => {
+    const { fixture, http, button, agenda } = setUp();
+    button().click();
+    fixture.detectChanges();
+    const oldPersonaWrite = http.expectOne(`${AGENDA_URL}/${TALK.id}`);
+
+    TestBed.inject(PersonaService).select(TOMAS.id);
+    fixture.detectChanges();
+    const newPersonaRead = http.expectOne(
+      (request) => request.url === AGENDA_URL && request.method === 'GET',
+    );
+    expect(newPersonaRead.request.headers.get('X-Demo-Profile-ID')).toBe(TOMAS.id);
+    newPersonaRead.flush({
+      profileId: TOMAS.id,
+      displayName: TOMAS.displayName,
+      bookmarked: [],
+      attended: [],
+    });
+    fixture.detectChanges();
+
+    oldPersonaWrite.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    http.expectNone(
+      (request) =>
+        request.url === AGENDA_URL &&
+        request.method === 'GET' &&
+        request.headers.get('X-Demo-Profile-ID') === AISHA.id,
+    );
+    expect(agenda.agenda()?.profileId).toBe(TOMAS.id);
+    expect(agenda.announcement()).toBe('');
   });
 
   it('removes with a DELETE when the talk is already on the agenda', () => {
