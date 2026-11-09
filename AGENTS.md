@@ -42,6 +42,7 @@ and shows a platform run by an AI operations team.
 | `seed/` | The CloudBridge Summit fixture and its media and caption files |
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
+| `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
 | `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean) |
 | `.github/workflows/` | CI (`ci.yml`), deploy, Build log |
