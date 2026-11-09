@@ -151,8 +151,14 @@ def _by_external(db: DbSession, model, conference_id: uuid.UUID) -> dict[str, ob
 
 
 def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
-    """Upsert the whole feed in the caller's transaction. Idempotent: unchanged sessions enqueue nothing."""
+    """Upsert the whole feed in the caller's transaction. Idempotent: unchanged sessions enqueue nothing.
+
+    A session the feed no longer lists is deleted, with a delete job for its search document (DATA-1). A feed with no
+    sessions is refused: it is a broken response, and importing it would delete the whole schedule, and with it every
+    agenda item that points at a session (ON DELETE CASCADE)."""
     parsed = parse_feed(feed)
+    if not parsed.sessions:
+        raise ValueError("the KubeCon feed has no sessions; refusing to delete the whole schedule")
     conf = _conference(db)
 
     rooms = _by_external(db, Room, conf.id)
@@ -173,10 +179,12 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
 
     existing_sessions = _by_external(db, Session, conf.id)
     feed_session_ids = {session.external_id for session in parsed.sessions}
+    removed = 0
     for ext, row in existing_sessions.items():
         if ext not in feed_session_ids:
             enqueue(db, "session", row.id, row.revision + 1, kind="delete")
             db.delete(row)
+            removed += 1
 
     changed = 0
     for s in parsed.sessions:
@@ -219,4 +227,4 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
                 read_on=ACCESS_READ_ON,
             )
         )
-    return {"sessions": len(parsed.sessions), "changed": changed, "rooms": len(parsed.rooms)}
+    return {"sessions": len(parsed.sessions), "changed": changed, "removed": removed, "rooms": len(parsed.rooms)}

@@ -2,9 +2,12 @@ import copy
 import uuid
 from datetime import UTC, datetime
 
+import pytest
+from sqlalchemy.dialects import postgresql
+
 from conferenceops.indexing import DIMENSIONS, MAPPING, embedding_text
 from conferenceops.kubecon import ACCESS_FACTS, ACCESS_PAGE, SLUG, import_kubecon, parse_feed, venue_instant
-from conferenceops.models import Conference, Level, OutboxJob, Room, Session, SessionSpeaker, Speaker
+from conferenceops.models import AccessFact, Conference, Level, OutboxJob, Room, Session, SessionSpeaker, Speaker
 
 FEED = {
     "categories": [
@@ -99,6 +102,10 @@ class _Scalars:
     def all(self):
         return self.rows
 
+    def one(self):
+        assert len(self.rows) == 1
+        return self.rows[0]
+
     def one_or_none(self):
         assert len(self.rows) <= 1
         return self.rows[0] if self.rows else None
@@ -111,51 +118,64 @@ class _Scalars:
 
 
 class _ImportDb:
+    """Just enough of an ORM session for import_kubecon and the catalog's upsert, kept in memory: equality WHERE
+    clauses, deletes, and INSERT ... ON CONFLICT (conference_id, external_id) DO NOTHING RETURNING id."""
+
     def __init__(self, conference, rooms=(), speakers=(), sessions=(), session_speakers=()):
         self.conference = conference
         self.rooms = list(rooms)
         self.speakers = list(speakers)
         self.sessions = list(sessions)
         self.session_speakers = list(session_speakers)
+        self.access_facts = []
         self.outbox = []
 
-    def scalars(self, statement):
-        entity = statement.column_descriptions[0]["entity"]
-        rows = {
+    def _table(self, model):
+        return {
             Conference: [self.conference],
             Room: self.rooms,
             Speaker: self.speakers,
             Session: self.sessions,
             SessionSpeaker: self.session_speakers,
-        }[entity]
-        for criterion in statement._where_criteria:
-            rows = [row for row in rows if getattr(row, criterion.left.key) == criterion.right.value]
-        return _Scalars(rows)
+            AccessFact: self.access_facts,
+            OutboxJob: self.outbox,
+        }[model]
+
+    @staticmethod
+    def _where(rows, statement):
+        return [
+            row for row in rows if all(getattr(row, c.left.key) == c.right.value for c in statement._where_criteria)
+        ]
+
+    def scalars(self, statement):
+        return _Scalars(self._where(self._table(statement.column_descriptions[0]["entity"]), statement))
 
     def add(self, row):
-        if isinstance(row, OutboxJob):
-            self.outbox.append(row)
-        elif isinstance(row, SessionSpeaker):
-            self.session_speakers.append(row)
-        elif isinstance(row, Speaker):
-            self.speakers.append(row)
-        elif isinstance(row, Room):
-            self.rooms.append(row)
-        elif isinstance(row, Session):
-            self.sessions.append(row)
+        self._table(type(row)).append(row)
 
     def delete(self, row):
-        self.sessions.remove(row)
+        self._table(type(row)).remove(row)
 
     def execute(self, statement):
-        if statement.table.name == "session_speakers":
-            self.session_speakers.clear()
+        model = statement.entity_description["entity"]
+        if statement.is_insert:
+            values = statement.compile(dialect=postgresql.dialect()).params
+            key = (values["conference_id"], values["external_id"])
+            if any((row.conference_id, row.external_id) == key for row in self._table(model)):
+                return _Scalars([])
+            row = model(**{**values, "id": uuid.uuid4()})
+            self.add(row)
+            return _Scalars([row.id])
+        rows = self._table(model)
+        for row in self._where(rows, statement):
+            rows.remove(row)
         return _Scalars([])
 
     def flush(self):
-        for session in self.sessions:
-            if session.id is None:
-                session.id = uuid.uuid4()
+        for rows in (self.rooms, self.speakers, self.sessions):
+            for row in rows:
+                if row.id is None:
+                    row.id = uuid.uuid4()
 
 
 def _import_session(conference_id, room_id):
@@ -198,21 +218,58 @@ def test_import_reconciles_speakers_even_when_session_fields_are_unchanged():
     assert session.revision == 3
 
 
+def test_a_first_import_stores_the_feed_and_a_reimport_changes_nothing():
+    conference = Conference(id=uuid.uuid4(), slug=SLUG)
+    db = _ImportDb(conference)
+
+    first = import_kubecon(db, FEED)
+
+    assert first == {"sessions": 2, "changed": 2, "removed": 0, "rooms": 1}
+    talk = next(row for row in db.sessions if row.external_id == "100")
+    assert (talk.title, talk.revision) == ("Tracing Everything", 1)
+    assert talk.starts_at == venue_instant("2026-11-10T10:30:00")
+    assert talk.room_id == db.rooms[0].id
+    assert [(link.session_id, link.speaker_id) for link in db.session_speakers] == [(talk.id, db.speakers[0].id)]
+    assert {(job.entity_id, job.entity_revision, job.kind) for job in db.outbox} == {
+        (row.id, 1, "index") for row in db.sessions
+    }
+    assert len(db.access_facts) == len(ACCESS_FACTS)
+    assert {fact.source_url for fact in db.access_facts} == {ACCESS_PAGE}  # ACCESS-1: every fact has its link
+
+    again = import_kubecon(db, copy.deepcopy(FEED))
+
+    assert again == {"sessions": 2, "changed": 0, "removed": 0, "rooms": 1}
+    assert len(db.outbox) == 2  # an unchanged session enqueues nothing
+    assert talk.revision == 1
+    assert len(db.access_facts) == len(ACCESS_FACTS)  # replaced, not duplicated
+
+
 def test_import_deletes_sessions_absent_from_the_feed_and_enqueues_tombstones():
     conference_id = uuid.uuid4()
     conference = Conference(id=conference_id, slug=SLUG)
-    stale = [
-        Session(id=uuid.uuid4(), conference_id=conference_id, external_id=external_id, revision=revision)
-        for external_id, revision in (("100", 4), ("101", 2))
-    ]
-    db = _ImportDb(conference, sessions=stale)
+    withdrawn = Session(id=uuid.uuid4(), conference_id=conference_id, external_id="999", revision=4)
+    other_event = Session(id=uuid.uuid4(), conference_id=uuid.uuid4(), external_id="999", revision=2)
+    db = _ImportDb(conference, sessions=[withdrawn, other_event])
+
+    counts = import_kubecon(db, FEED)
+
+    assert counts["removed"] == 1
+    assert withdrawn not in db.sessions
+    assert other_event in db.sessions  # another event's sessions are never touched
+    assert {row.external_id for row in db.sessions if row.conference_id == conference_id} == {"100", "101"}
+    assert [(job.entity_id, job.entity_revision) for job in db.outbox if job.kind == "delete"] == [(withdrawn.id, 5)]
+
+
+def test_an_empty_feed_is_refused_and_deletes_nothing():
+    # One broken fetch must not delete the whole schedule and, through ON DELETE CASCADE, every agenda item.
+    conference_id = uuid.uuid4()
+    session = _import_session(conference_id, room_id=None)
+    db = _ImportDb(Conference(id=conference_id, slug=SLUG), sessions=[session])
     feed = copy.deepcopy(FEED)
     feed["sessions"] = []
 
-    counts = import_kubecon(db, feed)
+    with pytest.raises(ValueError, match="no sessions"):
+        import_kubecon(db, feed)
 
-    assert counts["sessions"] == 0
-    assert db.sessions == []
-    assert {(job.entity_id, job.entity_revision, job.kind) for job in db.outbox} == {
-        (row.id, row.revision + 1, "delete") for row in stale
-    }
+    assert db.sessions == [session]
+    assert db.outbox == []
