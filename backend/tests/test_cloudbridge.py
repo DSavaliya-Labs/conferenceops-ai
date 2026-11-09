@@ -1,6 +1,7 @@
 """The CloudBridge Summit fixture matches CLOUDBRIDGE-SKETCH.md, and the loader maps it to the right row values.
 No database needed: these tests read the fixture packaged with the code."""
 
+import contextlib
 import json
 import re
 import uuid
@@ -13,7 +14,15 @@ import pytest
 from pydantic import ValidationError
 
 from conferenceops import cloudbridge
-from conferenceops.cloudbridge import Fixture, profile_id, read_fixture, session_data, to_utc
+from conferenceops.cloudbridge import (
+    Fixture,
+    fixture_profiles,
+    profile_id,
+    read_fixture,
+    session_data,
+    speaker_profile_id,
+    to_utc,
+)
 from conferenceops.models import ClockMode, EventKind, Level, Role
 from conferenceops.settings import Settings
 
@@ -200,6 +209,31 @@ def test_a_session_time_with_a_utc_offset_is_rejected():
         Fixture.model_validate(raw)
 
 
+def test_unknown_fields_are_rejected():
+    # extra="forbid": a typo or a field the loader doesn't know fails the load instead of being dropped silently.
+    raw = FIXTURE.model_dump(mode="json")
+    raw["sessions"][0]["track"] = "AI SRE"
+    with pytest.raises(ValidationError, match=r"sessions\.0\.track\s+Extra inputs are not permitted"):
+        Fixture.model_validate(raw)
+
+
+def test_an_empty_program_is_rejected():
+    # A reset deletes the sessions, rooms and speakers the fixture doesn't list; an empty list must not wipe them all.
+    for part in ("sessions", "rooms", "speakers"):
+        raw = FIXTURE.model_dump(mode="json")
+        raw[part] = []
+        with pytest.raises(ValidationError, match=f"{part}\n  List should have at least 1 item"):
+            Fixture.model_validate(raw)
+
+
+def test_two_people_with_one_profile_key_are_rejected():
+    # Profile IDs are uuid5 of the key, so an attendee keyed like a speaker would share that speaker's profile.
+    raw = FIXTURE.model_dump(mode="json")
+    raw["attendees"][0]["key"] = "S9"
+    with pytest.raises(ValidationError, match=r"duplicate profile: \['S9'\]"):
+        Fixture.model_validate(raw)
+
+
 def test_broken_references_are_rejected():
     raw = FIXTURE.model_dump(mode="json")
     raw["sessions"][4]["speakers"] = ["S99"]
@@ -326,27 +360,42 @@ def test_every_name_is_fictional_per_the_sketch():
     assert {p.company for p in people} - {None} <= set(SKETCH_COMPANIES)
 
 
+def test_about_40_profiles_one_for_every_speaker_and_daniel_is_his_persona():
+    # PLAN §6.1 and the sketch: about 40 profiles. 8 personas, 20 attendees and 11 speakers, because speaker S2 is
+    # persona P5 and has no second profile. Follows (Aisha follows S2 and S9) need the speakers' profiles.
+    profiles = fixture_profiles(FIXTURE)
+    assert len(profiles) == 39
+    speakers = {key: values for key, values in profiles.items() if values["role"] == Role.SPEAKER}
+    assert set(speakers) == {"P5", "S1", *(f"S{n}" for n in range(3, 13))}
+    assert speakers["S9"]["display_name"] == "Ananya Iyer"
+    assert speakers["P5"]["display_name"] == SKETCH_SPEAKERS["S2"][0]
+    assert speaker_profile_id(FIXTURE, "S2") == profile_id("P5")
+    assert speaker_profile_id(FIXTURE, "S9") == profile_id("S9")
+    for key, (name, _, company) in SKETCH_SPEAKERS.items():
+        profile = profiles["P5" if key == "S2" else key]
+        assert (profile["display_name"], profile["company"]) == (name, company)
+
+
 def test_only_the_8_personas_are_selectable_and_every_profile_is_flagged_fictional():
-    profiles = [cloudbridge.public_profile(p) for p in [*FIXTURE.personas, *FIXTURE.attendees]]
+    profiles = list(fixture_profiles(FIXTURE).values())
     assert [p["display_name"] for p in profiles if p["demo_selectable"]] == [p.display_name for p in FIXTURE.personas]
     assert all(p["is_fictional"] for p in profiles)
-    assert {p["role"] for p in profiles if not p["demo_selectable"]} == {Role.ATTENDEE}
+    assert {p["role"] for p in profiles if not p["demo_selectable"]} == {Role.ATTENDEE, Role.SPEAKER}
 
 
 def test_private_preferences_never_reach_public_profile_fields():
     # PRIV-1: `profiles` feeds public DTOs and search; preferences go to `profile_preferences` only.
-    for person in [*FIXTURE.personas, *FIXTURE.attendees]:
-        public = cloudbridge.public_profile(person)
+    for key, public in fixture_profiles(FIXTURE).items():
         assert not set(public) & {"needs_step_free", "wants_captions", "reduced_motion", "preferences"}
         text = json.dumps(public, default=str).lower()
-        assert [word for word in PRIVATE_WORDS if word in text] == [], person.key
+        assert [word for word in PRIVATE_WORDS if word in text] == [], key
 
 
 def test_profile_ids_are_deterministic_and_distinct():
     # Pinned: a new namespace would give every profile a new ID, and the next load would duplicate them all.
     assert profile_id("P1") == uuid.UUID("9e93bdf5-9c94-57eb-a683-02c6d8aff44f")
-    keys = [p.key for p in FIXTURE.personas] + [a.key for a in FIXTURE.attendees]
-    assert len({profile_id(key) for key in keys}) == len(keys) == 28
+    keys = list(fixture_profiles(FIXTURE))
+    assert len({profile_id(key) for key in keys}) == len(keys) == 39
 
 
 def test_the_fixture_ships_inside_the_package():
@@ -362,4 +411,21 @@ def test_the_cli_refuses_to_run_without_database_url(monkeypatch):
         raise AssertionError("the CLI opened a transaction without DATABASE_URL")
 
     monkeypatch.setattr(cloudbridge, "transaction", no_database)
-    assert cloudbridge.main() == 2
+    assert cloudbridge.main([]) == 2
+
+
+def test_the_cli_resets_only_when_asked(monkeypatch):
+    # A deploy runs the plain command, which only adds what is missing; the full reseed is a deliberate --reset.
+    monkeypatch.setattr(cloudbridge, "settings", lambda: Settings(database_url="postgresql+psycopg://db/test"))
+    monkeypatch.setattr(cloudbridge, "setup_telemetry", lambda *_: None)
+    monkeypatch.setattr(cloudbridge, "transaction", contextlib.nullcontext)
+    calls = []
+
+    def load(db, *, reset):
+        calls.append(reset)
+        return cloudbridge.LoadResult(conference_id=uuid.uuid4())
+
+    monkeypatch.setattr(cloudbridge, "load_cloudbridge", load)
+    assert cloudbridge.main([]) == 0
+    assert cloudbridge.main(["--reset"]) == 0
+    assert calls == [False, True]

@@ -3,34 +3,48 @@
 The data is the packaged fixture `fixtures/cloudbridge.json`, generated from CLOUDBRIDGE-SKETCH.md. Every person,
 company and room in it is invented, and the conference is flagged fictional so the UI can label it.
 
-Loading is idempotent: it converges the rows the fixture owns and leaves everything else alone.
+A load runs in the caller's transaction, so it commits whole or not at all. There are two kinds:
+- **Seed**, the default, is safe to run on every deploy. It adds what is missing and never changes or removes a row
+  that exists, so what people changed survives: an organizer's edit to a session or a room, a persona's preferences,
+  a bookmark she removed. A persona's fixture history is added together with her profile, or with the session it
+  points at, and not otherwise, so a removed bookmark doesn't come back. What left the fixture stays.
+- **Reset** (`reset=True`, or `--reset` on the command line) is the explicit full reseed of PLAN §6.3, never part of
+  a deploy. The fixture wins: everything it owns gets the fixture's values back, each persona's preferences and
+  CloudBridge history become the fixture's again, and the sessions, rooms and speakers that left the fixture are
+  deleted, each deleted session with a delete job for its search document (DATA-1). Rows the fixture doesn't own are
+  left alone, such as the personas' KubeCon agendas. Profiles are never deleted.
+
+Either way:
 - The conference is matched by slug, its rooms and speakers by their fixture keys (stored as external IDs).
 - Sessions go through `catalog.upsert_session`, so a new or changed session is projected to search through the
   outbox in the same transaction, and an unchanged one enqueues nothing (DATA-1).
-- Profiles get deterministic IDs (uuid5 of their fixture key), so a re-run finds the rows it wrote. Persona
-  preferences go to `profile_preferences` only (PRIV-1). The personas' CloudBridge history becomes attendance rows
-  (attended) and agenda items (bookmarked); history is only added, never deleted, so a persona's own activity
-  survives a re-run.
-A second load of an unchanged fixture writes nothing at all.
+- Profiles get deterministic IDs (uuid5 of their fixture key), so a load finds the rows an earlier one wrote. The
+  8 personas, the public attendees, and a public profile for each speaker who isn't a persona (S2 is persona P5):
+  39 profiles, the "about 40" of PLAN §6.1. Persona preferences go to `profile_preferences` only (PRIV-1).
+- A transaction-scoped advisory lock serializes loads: a second load at the same time (a deploy hook and a manual
+  run, or two pods) waits for the first to commit and then finds its rows, instead of failing on a duplicate key.
+A second load of an unchanged fixture, seed or reset, writes nothing at all.
 
-Run it with `python -m conferenceops.cloudbridge`: it loads the packaged fixture into DATABASE_URL in one
+Run it with `python -m conferenceops.cloudbridge [--reset]`: it loads the packaged fixture into DATABASE_URL in one
 transaction."""
 
+import argparse
 import logging
 import uuid
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from importlib import resources
 from typing import Any, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
-from sqlalchemy import delete, select
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session as DbSession
 
 from conferenceops.catalog import SessionData, upsert_session
-from conferenceops.db import transaction
+from conferenceops.db import enqueue, transaction
 from conferenceops.models import (
     AgendaItem,
     Attendance,
@@ -42,6 +56,7 @@ from conferenceops.models import (
     ProfilePreferences,
     Role,
     Room,
+    Session,
     SessionSpeaker,
     Speaker,
 )
@@ -53,6 +68,8 @@ log = logging.getLogger("conferenceops.cloudbridge")
 SOURCE = "fixture"
 # Never change this: every fixture profile would get a new ID, and the next load would duplicate them all.
 PROFILE_NAMESPACE = uuid.UUID("5d69fc74-3f71-41cc-b56f-3ae195504322")
+# The advisory lock every CloudBridge load takes ("CLOUDBRG" in ASCII), held until the caller's transaction ends.
+LOCK_KEY = 0x434C4F5544425247
 
 
 def profile_id(key: str) -> uuid.UUID:
@@ -160,9 +177,10 @@ class Fixture(_Spec):
     about: str
     conference: ConferenceSpec
     companies: list[CompanySpec]
-    rooms: list[RoomSpec]
-    speakers: list[SpeakerSpec]
-    sessions: list[SessionSpec]
+    # A reset deletes what isn't listed, so an empty list would wipe the program: refuse it.
+    rooms: list[RoomSpec] = Field(min_length=1)
+    speakers: list[SpeakerSpec] = Field(min_length=1)
+    sessions: list[SessionSpec] = Field(min_length=1)
     personas: list[PersonaSpec]
     attendees: list[AttendeeSpec]
 
@@ -180,7 +198,14 @@ class Fixture(_Spec):
         rooms = unique("room", [r.key for r in self.rooms])
         speakers = unique("speaker", [s.key for s in self.speakers])
         sessions = unique("session", [s.key for s in self.sessions])
-        unique("profile", [p.key for p in self.personas] + [a.key for a in self.attendees])
+        as_persona = unique("persona speaker", [p.speaker for p in self.personas if p.speaker is not None])
+        # Profile IDs come from these keys, so they must be distinct across personas, attendees and speakers.
+        unique(
+            "profile",
+            [p.key for p in self.personas]
+            + [a.key for a in self.attendees]
+            + [s.key for s in self.speakers if s.key not in as_persona],
+        )
 
         conf = self.conference
         if conf.starts_on > conf.ends_on:
@@ -259,6 +284,33 @@ def public_profile(person: PersonaSpec | AttendeeSpec) -> dict[str, Any]:
     }
 
 
+def speaker_profile(spec: SpeakerSpec) -> dict[str, Any]:
+    """The public profile of a speaker who isn't a persona: not selectable, no preferences, no history."""
+    return {
+        "role": Role.SPEAKER,
+        "display_name": spec.name,
+        "company": spec.company,
+        "interests": [],
+        "demo_selectable": False,
+        "is_fictional": True,
+    }
+
+
+def fixture_profiles(fx: Fixture) -> dict[str, dict[str, Any]]:
+    """Every profile the fixture owns, by key: the personas, the public attendees, and one for each speaker who isn't
+    a persona. The profile ID is `profile_id(key)`."""
+    profiles = {person.key: public_profile(person) for person in [*fx.personas, *fx.attendees]}
+    as_persona = {p.speaker for p in fx.personas if p.speaker is not None}
+    profiles |= {s.key: speaker_profile(s) for s in fx.speakers if s.key not in as_persona}
+    return profiles
+
+
+def speaker_profile_id(fx: Fixture, speaker: str) -> uuid.UUID:
+    """The profile of a fixture speaker, such as "S9": the persona who is that speaker (S2 is P5), or their own."""
+    persona = next((p.key for p in fx.personas if p.speaker == speaker), None)
+    return profile_id(persona or speaker)
+
+
 @dataclass
 class LoadResult:
     conference_id: uuid.UUID
@@ -279,15 +331,44 @@ def _assign(row: Any, values: dict[str, Any]) -> bool:
     return changed
 
 
-def _upsert(db: DbSession, written: Counter[str], model: Any, key: dict[str, Any], values: dict[str, Any]) -> Any:
+def _put(
+    db: DbSession, written: Counter[str], model: Any, key: dict[str, Any], values: dict[str, Any], reset: bool
+) -> tuple[Any, bool]:
+    """Find a row by its key and create it when it's missing. Only a reset changes a row that exists.
+    Returns the row and whether it was created."""
     row = db.scalars(select(model).filter_by(**key)).one_or_none()
     if row is None:
         row = model(**key, **values)
         db.add(row)
         written[model.__tablename__] += 1
-    elif _assign(row, values):
+        return row, True
+    if reset and _assign(row, values):
         written[model.__tablename__] += 1
-    return row
+    return row, False
+
+
+def _converge_links(
+    db: DbSession,
+    written: Counter[str],
+    model: Any,
+    owner: Any,
+    owner_id: uuid.UUID,
+    linked: Any,
+    desired: set[uuid.UUID],
+    scope: set[uuid.UUID] | None = None,
+) -> None:
+    """Make the IDs in column `linked` of the rows whose `owner` is `owner_id` exactly `desired`. With a `scope`, only
+    links inside it count, so links to anything else (such as KubeCon sessions in a persona's agenda) stay."""
+    current = set(db.scalars(select(linked).where(owner == owner_id)))
+    if scope is not None:
+        current &= scope
+    for item in desired - current:
+        db.add(model(**{owner.key: owner_id, linked.key: item}))
+        written[model.__tablename__] += 1
+    stale = current - desired
+    if stale:
+        db.execute(delete(model).where(owner == owner_id, linked.in_(stale)))
+        written[model.__tablename__] += len(stale)
 
 
 def _add_missing(db: DbSession, written: Counter[str], model: Any, profile: uuid.UUID, session: uuid.UUID) -> None:
@@ -296,84 +377,140 @@ def _add_missing(db: DbSession, written: Counter[str], model: Any, profile: uuid
         written[model.__tablename__] += 1
 
 
-def _set_speakers(db: DbSession, written: Counter[str], session_id: uuid.UUID, desired: set[uuid.UUID]) -> None:
-    current = set(db.scalars(select(SessionSpeaker.speaker_id).where(SessionSpeaker.session_id == session_id)))
-    for speaker_id in desired - current:
-        db.add(SessionSpeaker(session_id=session_id, speaker_id=speaker_id))
-        written["session_speakers"] += 1
-    stale = current - desired
-    if stale:
-        db.execute(
-            delete(SessionSpeaker).where(SessionSpeaker.session_id == session_id, SessionSpeaker.speaker_id.in_(stale))
-        )
-        written["session_speakers"] += len(stale)
+def _remove_sessions_not_in(db: DbSession, written: Counter[str], conference_id: uuid.UUID, keys: set[str]) -> None:
+    """Delete the conference's sessions that left the fixture. Each gets a delete job one revision above its last
+    index job, so search drops its document and an older job can't bring it back (DATA-1)."""
+    gone = db.scalars(
+        select(Session)
+        .where(Session.conference_id == conference_id, Session.external_id.not_in(sorted(keys)))
+        .with_for_update()
+    ).all()
+    for row in gone:
+        enqueue(db, "session", row.id, row.revision + 1, kind="delete")
+        db.delete(row)  # its speaker links, attendance and agenda items go with it (ON DELETE CASCADE)
+        written["sessions"] += 1
+    db.flush()
 
 
-def load_cloudbridge(db: DbSession, fixture: Fixture | None = None) -> LoadResult:
-    """Converge the database to the fixture in the caller's transaction, so the whole seed commits or none of it."""
+def _remove_not_in(db: DbSession, written: Counter[str], model: Any, conference_id: uuid.UUID, keys: set[str]) -> None:
+    """Delete the conference's rooms or speakers that left the fixture."""
+    stmt = delete(model).where(model.conference_id == conference_id, model.external_id.not_in(sorted(keys)))
+    removed = db.execute(stmt).rowcount
+    if removed:
+        written[model.__tablename__] += removed
+
+
+def load_cloudbridge(db: DbSession, fixture: Fixture | None = None, *, reset: bool = False) -> LoadResult:
+    """Load the fixture in the caller's transaction, so the whole load commits or none of it. A seed by default: it
+    only adds what is missing. `reset=True` is the explicit full reseed (see the module docstring)."""
     fx = fixture if fixture is not None else read_fixture()
     zone = ZoneInfo(fx.conference.timezone)
     written: Counter[str] = Counter()
+    # Wait for any other load to commit first; the lock is released when the caller's transaction ends.
+    db.execute(text("SELECT pg_advisory_xact_lock(CAST(:key AS bigint))"), {"key": LOCK_KEY})
 
-    conf = _upsert(db, written, Conference, {"slug": fx.conference.slug}, conference_values(fx.conference))
+    conf, _ = _put(db, written, Conference, {"slug": fx.conference.slug}, conference_values(fx.conference), reset)
     db.flush()  # IDs are assigned on insert, and everything below needs the conference's
     rooms = {
-        r.key: _upsert(db, written, Room, {"conference_id": conf.id, "external_id": r.key}, {"name": r.name})
+        r.key: _put(db, written, Room, {"conference_id": conf.id, "external_id": r.key}, {"name": r.name}, reset)[0]
         for r in fx.rooms
     }
     speakers = {
-        s.key: _upsert(
+        s.key: _put(
             db,
             written,
             Speaker,
             {"conference_id": conf.id, "external_id": s.key},
             {"name": s.name, "title": s.title, "company": s.company},
-        )
+            reset,
+        )[0]
         for s in fx.speakers
     }
     db.flush()
 
-    sessions = {}
+    if reset:
+        _remove_sessions_not_in(db, written, conf.id, {s.key for s in fx.sessions})
+    session_ids: dict[str, uuid.UUID] = {}
+    new_sessions: set[str] = set()
     for spec in fx.sessions:
+        # Only the ID: loading the row here would hand `upsert_session` a cached copy instead of the locked one.
+        existing = db.scalar(
+            select(Session.id).where(Session.conference_id == conf.id, Session.external_id == spec.key)
+        )
+        if existing is not None and not reset:
+            session_ids[spec.key] = existing  # seed: an existing session keeps any edit, and its speakers
+            continue
         row, changed = upsert_session(db, session_data(spec, conf.id, rooms[spec.room].id, zone))
+        session_ids[spec.key] = row.id
+        if existing is None:
+            new_sessions.add(spec.key)
         if changed:
             written["sessions"] += 1
-        sessions[spec.key] = row
-        _set_speakers(db, written, row.id, {speakers[key].id for key in spec.speakers})
+        desired = {speakers[key].id for key in spec.speakers}
+        _converge_links(
+            db, written, SessionSpeaker, SessionSpeaker.session_id, row.id, SessionSpeaker.speaker_id, desired
+        )
+    if reset:
+        db.flush()  # sessions point at the fixture's rooms now, so the rooms that left have no sessions left
+        _remove_not_in(db, written, Room, conf.id, set(rooms))
+        _remove_not_in(db, written, Speaker, conf.id, set(speakers))
 
-    for person in [*fx.personas, *fx.attendees]:
-        _upsert(db, written, Profile, {"id": profile_id(person.key)}, public_profile(person))
+    new_profiles: set[str] = set()
+    for key, values in fixture_profiles(fx).items():
+        _, created = _put(db, written, Profile, {"id": profile_id(key)}, values, reset)
+        if created:
+            new_profiles.add(key)
     db.flush()  # profiles before the rows that reference them
 
+    archive = set(session_ids.values())
     for persona in fx.personas:
         pid = profile_id(persona.key)
-        prefs = db.get(ProfilePreferences, pid)
-        wanted = persona.preferences.model_dump()
-        if prefs is None:
-            db.add(ProfilePreferences(profile_id=pid, excluded_levels=[], revision=1, **wanted))
+        wanted = {**persona.preferences.model_dump(), "excluded_levels": []}
+        prefs, _ = _put(
+            db,
+            written,
+            ProfilePreferences,
+            {"profile_id": pid},
+            {**wanted, "revision": 1},
+            reset=False,  # an existing row is handled below, so its revision moves on instead of going back to 1
+        )
+        if reset and _assign(prefs, wanted):
+            prefs.revision += 1  # the persona's own revision-aware edits (PATCH /me/preferences) see the change
             written["profile_preferences"] += 1
-        elif _assign(prefs, wanted):
-            prefs.revision += 1
-            written["profile_preferences"] += 1
-        for key in persona.attended:
-            _add_missing(db, written, Attendance, pid, sessions[key].id)
-        for key in persona.bookmarked:
-            _add_missing(db, written, AgendaItem, pid, sessions[key].id)
+        for model, keys in ((Attendance, persona.attended), (AgendaItem, persona.bookmarked)):
+            if reset:  # her CloudBridge history becomes the fixture's; her KubeCon agenda isn't in scope
+                desired = {session_ids[key] for key in keys}
+                _converge_links(db, written, model, model.profile_id, pid, model.session_id, desired, archive)
+                continue
+            for key in keys:  # seed: only with a new profile or a new session, so a removed bookmark stays removed
+                if persona.key in new_profiles or key in new_sessions:
+                    _add_missing(db, written, model, pid, session_ids[key])
     db.flush()
     return LoadResult(conference_id=conf.id, written=written)
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m conferenceops.cloudbridge",
+        description="Load the CloudBridge Summit fixture into DATABASE_URL. By default it only adds what is missing.",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="the explicit full reseed: put back everything the fixture owns, including what people changed, and "
+        "delete the sessions, rooms and speakers that left the fixture",
+    )
+    args = parser.parse_args(argv)
     cfg = settings()
     setup_telemetry("seed", cfg)
     if not cfg.database_url:
         log.error("DATABASE_URL is not set; nothing was loaded")
         return 2
     with transaction() as db:
-        result = load_cloudbridge(db)
+        result = load_cloudbridge(db, reset=args.reset)
     # Counts per table only: never names, interests or preferences (PRIV-1).
     summary = ", ".join(f"{table} {count}" for table, count in sorted(result.written.items())) or "none"
-    log.info("CloudBridge Summit fixture loaded; rows written: %s", summary)
+    log.info("CloudBridge Summit fixture %s; rows written: %s", "reset" if args.reset else "seeded", summary)
     return 0
 
 
