@@ -1,0 +1,69 @@
+WEBVTT
+Kind: captions
+Language: en
+
+NOTE Simulated excerpt: a synthesized voice reading text written for the demo. CloudBridge Summit 2026 is a fictional event.
+
+1
+00:00:00.000 --> 00:00:01.500
+[Simulated excerpt: synthesized voice, fictional speaker]
+
+2
+00:00:01.500 --> 00:00:06.740
+<v Ananya Iyer>A language model call is the slowest, most expensive and least predictable dependency
+
+3
+00:00:06.740 --> 00:00:11.620
+<v Ananya Iyer>most of us have ever added to a request path. So trace it like one.
+
+4
+00:00:11.620 --> 00:00:14.360
+<v Ananya Iyer>Every call in our service gets its own span.
+
+5
+00:00:14.360 --> 00:00:18.880
+<v Ananya Iyer>We record the model name, the input and output token counts, an estimated cost,
+
+6
+00:00:18.880 --> 00:00:24.260
+<v Ananya Iyer>and whether the response was served from cache. The latency is the span itself.
+
+7
+00:00:24.260 --> 00:00:25.920
+<v Ananya Iyer>What we never record is the prompt.
+
+8
+00:00:25.920 --> 00:00:31.640
+<v Ananya Iyer>The prompt carries the user's own words, and a trace is not a safe place for them.
+
+9
+00:00:31.640 --> 00:00:35.140
+<v Ananya Iyer>We also keep the model's answer out of the span attributes.
+
+10
+00:00:35.140 --> 00:00:41.320
+<v Ananya Iyer>If we need to debug the content, we do it with a sampled, access-controlled store, not with telemetry.
+
+11
+00:00:41.320 --> 00:00:45.080
+<v Ananya Iyer>With that in place, a slow answer stops being a mystery.
+
+12
+00:00:45.080 --> 00:00:48.340
+<v Ananya Iyer>Last month one feature doubled its p95 latency.
+
+13
+00:00:48.340 --> 00:00:52.320
+<v Ananya Iyer>The spans showed retries: every timeout was being retried twice,
+
+14
+00:00:52.320 --> 00:00:55.080
+<v Ananya Iyer>so one slow model call turned into three.
+
+15
+00:00:55.080 --> 00:00:59.740
+<v Ananya Iyer>We also roll the token counts into a metric: cost per feature, per hour.
+
+16
+00:00:59.740 --> 00:01:03.860
+<v Ananya Iyer>The first week it ran, it found an internal tool that spent more than the product did.

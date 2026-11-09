@@ -1,6 +1,8 @@
 import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 import { Subscription } from 'rxjs';
 
+import { AskAnswer } from './ask-answer';
 import { DictationButton } from './dictation-button';
 import { PersonaSwitcher } from './persona-switcher';
 import { PersonaService } from './personas';
@@ -13,7 +15,7 @@ type WhereNextStatus = 'idle' | 'loading' | 'done' | 'error';
 
 @Component({
   selector: 'app-root',
-  imports: [DictationButton, PersonaSwitcher, WhereNextCards],
+  imports: [RouterOutlet, DictationButton, PersonaSwitcher, WhereNextCards, AskAnswer],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -27,6 +29,8 @@ export class App {
   protected readonly status = signal<Status>('idle');
   protected readonly results = signal<SearchResult[]>([]);
   protected readonly validation = signal('');
+  /** The question the archive answers with citations (app-ask-answer); set on each submit. */
+  protected readonly asked = signal('');
 
   protected readonly window = signal<WhereNextWindow>('today');
   protected readonly whereNextStatus = signal<WhereNextStatus>('idle');
@@ -95,6 +99,7 @@ export class App {
     }
     this.lastAction.set('search');
     this.status.set('searching');
+    this.asked.set(query);
     this.searchService.search(query).subscribe({
       next: (response) => {
         this.results.set(response.results);

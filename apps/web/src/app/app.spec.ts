@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
 import { App } from './app';
 import { scrubUrlAttributes } from './telemetry';
@@ -8,7 +9,7 @@ import { scrubUrlAttributes } from './telemetry';
 function render() {
   TestBed.configureTestingModule({
     imports: [App],
-    providers: [provideHttpClient(), provideHttpClientTesting()],
+    providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
   });
   const fixture = TestBed.createComponent(App);
   fixture.detectChanges();

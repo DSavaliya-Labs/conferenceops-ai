@@ -1,0 +1,49 @@
+@if (status() !== 'idle') {
+  <section
+    class="ask-answer"
+    aria-labelledby="answer-heading"
+    [attr.aria-busy]="status() === 'loading' ? 'true' : null"
+  >
+    <h2 id="answer-heading">From the CloudBridge archive</h2>
+    <p class="labels">
+      <span class="badge">Fictional demo event</span>
+      <span class="badge">Simulated excerpt</span>
+      Answers come only from published transcripts of CloudBridge Summit 2026. A transcript still
+      processing can't be cited.
+    </p>
+    <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
+    @switch (status()) {
+      @case ('loading') {
+        <p class="hint">Looking through the published transcripts…</p>
+      }
+      @case ('error') {
+        <p class="error" role="alert">
+          The archive isn't answering right now. The talk search above still works.
+        </p>
+      }
+      @case ('done') {
+        @if (response(); as r) {
+          <p class="source">{{ sourceLabel() }}</p>
+          <p class="answer">{{ r.answer }}</p>
+          @if (citations().length > 0) {
+            <h3>Cited moments</h3>
+            <ol class="citations">
+              @for (c of citations(); track c.chunkId) {
+                <li>
+                  <a
+                    [routerLink]="['/sessions', c.sessionId, 'replay']"
+                    [queryParams]="{ t: c.startSeconds }"
+                  >
+                    {{ c.sessionTitle }} · {{ c.speaker }} · {{ range(c) }}
+                  </a>
+                  <span class="badge">{{ c.label }}</span>
+                  <q>{{ c.excerpt }}</q>
+                </li>
+              }
+            </ol>
+          }
+        }
+      }
+    }
+  </section>
+}
