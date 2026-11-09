@@ -79,6 +79,13 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   Search. A denied microphone or a failed transcription says so, and typing keeps working. The audio is never stored,
   and neither it nor the text reaches logs or telemetry. Browsers allow the microphone only on HTTPS or `localhost`,
   and the public URL is plain HTTP today, so dictation works on a local or port-forwarded instance.
+- **A persona from the first click, and two actions on every talk card.** A first visit starts as Aisha
+  Rahman, the demo's hero (the last pick is remembered in the browser; the server still resolves the persona from
+  the header on every request). Every talk card, in search results, Where-next cards and the agenda, has **Add to
+  My Agenda** (an `aria-pressed` toggle; a bookmark is a personal plan and never reserves a seat; Where-next then
+  excludes talks that clash with it) and **Read aloud**, which reads the card with the browser's own speech
+  synthesis: the text never leaves the device, one card speaks at a time, and a browser without it gets a disabled
+  button that says so. The cited answer has Read aloud too.
 - **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
   replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
   such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
