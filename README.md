@@ -331,7 +331,7 @@ flowchart TB
 
   subgraph aks["AKS, namespace conferenceops"]
     web["web: nginx serves the app and proxies /api"]
-    core["core-api (FastAPI): personas, dictation, replays, transcript publication"]
+    core["core-api (FastAPI): personas, agenda, dictation, replays, transcript publication"]
     discovery["discovery-api (FastAPI): search, where next, cited Ask answers; at most 24 requests in flight per pod"]
     worker["worker: KubeCon import, outbox indexing; liveness probe reads its heartbeat"]
     pg[("PostgreSQL: canonical records + outbox")]
@@ -368,7 +368,7 @@ flowchart TB
   radar -.->|"investigates"| aks
 ```
 
-- **One Python package, three processes,** all from one image: `core-api` (personas, dictation, replays and transcript
+- **One Python package, three processes,** all from one image: `core-api` (personas, agenda, dictation, replays and transcript
   publication), `discovery-api` (search, "where should I go next?", cited Ask answers) and `worker` (KubeCon import and
   outbox indexing, each in its own loop).
   Discovery is its own process so it can scale out under load while the rest keeps working.
