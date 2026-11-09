@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session as DbSession
 
 from conferenceops.db import enqueue
@@ -33,17 +34,24 @@ _FIELDS = ("title", "abstract", "level", "topics", "starts_at", "ends_at", "room
 def upsert_session(db: DbSession, data: SessionData) -> tuple[Session, bool]:
     """Insert or update a session by (conference, external ID). Returns the row and whether anything changed.
     An unchanged session keeps its revision and enqueues nothing, so re-running an import is free."""
+    stmt = (
+        insert(Session)
+        .values(
+            conference_id=data.conference_id,
+            external_id=data.external_id,
+            revision=1,
+            **{name: getattr(data, name) for name in _FIELDS},
+        )
+        .on_conflict_do_nothing(index_elements=["conference_id", "external_id"])
+        .returning(Session.id)
+    )
+    inserted_id = db.execute(stmt).scalar_one_or_none()
     row = db.scalars(
         select(Session)
         .where(Session.conference_id == data.conference_id, Session.external_id == data.external_id)
         .with_for_update()
-    ).one_or_none()
-    if row is None:
-        row = Session(conference_id=data.conference_id, external_id=data.external_id, revision=1)
-        for name in _FIELDS:
-            setattr(row, name, getattr(data, name))
-        db.add(row)
-        db.flush()
+    ).one()
+    if inserted_id is not None:
         enqueue(db, "session", row.id, row.revision)
         return row, True
 
