@@ -132,9 +132,10 @@ jobs:
           done
 
       # One dash0.deployment event per service, after the deploy completed, successfully or not, as Dash0's deployment
-      # event convention asks: scripts/dash0-deploy-marker.sh sends them. The failure step marks the tag as failed
-      # whichever step failed, since the tag didn't reach AKS either way. The token stays in the environment.
+      # event convention asks: scripts/dash0-deploy-marker.sh sends them. The failure marker handles deploy failures,
+      # but not a failure to send the success marker itself. The token stays in the environment.
       - name: Mark the deploy in Dash0
+        id: mark-succeeded
         env:
           DASH0_OTLP_URL: https://ingress.us-west-2.aws.dash0.com
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
@@ -142,7 +143,7 @@ jobs:
         run: ./scripts/dash0-deploy-marker.sh succeeded "$TAG"
 
       - name: Mark the failed deploy in Dash0
-        if: failure()
+        if: failure() && steps.mark-succeeded.outcome != 'failure'
         env:
           DASH0_OTLP_URL: https://ingress.us-west-2.aws.dash0.com
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
