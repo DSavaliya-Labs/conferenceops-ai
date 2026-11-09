@@ -10,6 +10,7 @@ from elasticsearch import Elasticsearch
 from fastapi import Depends, HTTPException
 from openai import OpenAI
 
+from conferenceops.admission import add_admission_control
 from conferenceops.indexing import OpenAIEmbedder
 from conferenceops.search import HybridSearch, PostgresSearchSessions, SearchBackend, SearchRequest, SearchResponse
 from conferenceops.settings import settings
@@ -18,6 +19,7 @@ from conferenceops.web import create_app
 log = logging.getLogger("conferenceops.discovery")
 
 app = create_app("discovery-api")
+add_admission_control(app, settings())  # per-pod limit on /api/v1 requests in progress; 503 above it (PLAN §15.2)
 
 
 @lru_cache

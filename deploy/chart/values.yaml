@@ -17,6 +17,9 @@ components:
   discovery:
     command: discovery-api
     replicas: 1
+    # Admission control (DISCOVERY_MAX_INFLIGHT, 1..40): requests in progress per pod before discovery answers 503
+    # DISCOVERY_CAPACITY_EXHAUSTED. Set it from measured capacity (ops/load/README.md), never in an incident PR (OPS-1).
+    maxInflight: 8
     resources:
       requests: {cpu: 250m, memory: 256Mi}
       limits: {memory: 512Mi}

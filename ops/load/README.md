@@ -118,13 +118,22 @@ early. Ctrl-C stops the waiting, not the test.
   Keep the summary JSON lines of the baseline, the incident and the recovery runs as evidence: §15.4 compares them at
   the same rate, connection policy and query corpus.
 
-## Calibrate one pod's capacity first
+## Calibrate one pod's capacity and its admission limit
 
 Set the per-pod admission limit from measured capacity, never to make the test fail (§15.2).
 
+**What the limit is.** Admission control (`backend/conferenceops/admission.py`) caps the requests **in progress** on
+one discovery pod, not the requests per second. The cap is `components.discovery.maxInflight` in
+`deploy/env/aks/values.yaml` (`DISCOVERY_MAX_INFLIGHT` in the pod, 1 to 40). A request that finds every slot taken
+waits at most 50 ms for one, then gets a 503 with `DISCOVERY_CAPACITY_EXHAUSTED` and `Retry-After: 1`. By Little's
+law, a pod that serves `R` requests a second, each taking `W` seconds, has `R × W` requests in progress on average,
+so a limit `N` starts rejecting at an offered rate of about `N / W`. `W` grows as the pod gets busy, so measure that
+rate instead of trusting the formula. Every change to the limit is a values pull request and a deploy; an incident
+pull request may never change it (OPS-1).
+
 1. **Prepare.** One Ready discovery replica, the image and configuration you will demo, healthy Elasticsearch and
-   PostgreSQL, and nothing else loading the cluster. If admission control (task C1) is already deployed, set its
-   limit above every rate you test, so you measure the pod, not the limit.
+   PostgreSQL, and nothing else loading the cluster. Set `maxInflight: 40`, the most its 40 worker threads can run,
+   so the limit doesn't bind and you measure the pod, not the limit.
 2. **Warm up.** `scripts/load-run.sh --rate 2 --duration 1m`, and discard the result.
 3. **Step the rate up.** `scripts/load-run.sh --rate R --duration 2m` for R = 2, 4, 6, 8, 10, 12 and on. Keep each
    run's JSON line.
@@ -134,8 +143,30 @@ Set the per-pod admission limit from measured capacity, never to make the test f
    - `lexical` answers mean the embedding call failed: OpenAI, not the pod, was the limit;
    - check discovery's CPU and the Elasticsearch latency in Dash0. If Elasticsearch or another shared dependency
      saturates first, more discovery replicas won't help: report that instead of the planned fix (§15.2).
-5. **Record** `C_pod`, the highest rate that met every target, with the image SHA and the date.
-6. **Set the admission limit** from `C_pod` (C1): about `C_pod` accepted requests per second with a small burst.
+5. **Record** `C_pod`, the highest rate that met every target, with the image SHA and the date. Also read `L`, the
+   average number of requests in progress on the pod during that step: the seconds of request time per second,
+   from discovery's server spans in Dash0 (evaluate it at the end of the step):
+
+   ```promql
+   histogram_sum(sum by (k8s_pod_name) (rate({otel_metric_name="dash0.spans.duration",
+     service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER",
+     http_route="/api/v1/search"}[2m])))
+   ```
+
+6. **Set the limit** to `N = ceil(L) + 1`, within 1 to 40: what the pod had in progress at its capacity, plus one
+   slot for arrival jitter. Deploy it.
+7. **Find the offered rate where one pod starts rejecting.** With `N` deployed, step the rate again around `C_pod`,
+   for example from `C_pod − 2` to `C_pod + 4`, 2 minutes each. `R_reject` is the lowest rate whose summary shows
+   capacity rejections (`rejected503.capacityExhausted` in the JSON line) on more than 1% of the requests sent.
+   - Below `R_reject`: no capacity rejections, and every target met.
+   - Above it: the pod still meets the p95 target for the requests it accepts, and the accepted rate (sent minus
+     503s, per second of the run) stays near `C_pod`. Discovery's dashboard shows the 503s per pod, and the server
+     spans carry `conferenceops.error.code` = `DISCOVERY_CAPACITY_EXHAUSTED`.
+   - If rejections start well below `C_pod` while the successful p95 is far under 1.5 s, the limit is too tight:
+     raise `N` by one and repeat. If the successful p95 reaches 1.5 s before any rejection, it is too loose: lower
+     `N`.
+8. **Record** `N`, `R_reject` and `C_pod` with the image SHA and the date. In the next section, `C_pod` means the
+   rate one pod accepts with that limit: use `R_reject`.
 
 ## The offered peak rate
 
@@ -183,8 +214,8 @@ and inversely with `w`: `u = 0.1` gives 1.7, and `u = 0.5` gives 8.4.
   6.7). If `R_peak` is lower, the sample size sets the rate, not the estimate: then call it "a load test at or above
   our estimated peak".
 - `R_test = max(ceil(R_peak), 7)`.
-- With the admission limit at about `C_pod`, one pod accepts about `C_pod` requests a second and rejects the rest, a
-  share of `1 − C_pod / R_test`. The incident starts only when the Dash0 check
+- With the admission limit calibrated as above, one pod accepts about `C_pod` requests a second (its measured
+  `R_reject`) and rejects the rest, a share of `1 − C_pod / R_test`. The incident starts only when the Dash0 check
   ([`discovery-rejecting-searches.yaml`](../../observability/dash0/checks/discovery-rejecting-searches.yaml)) sees
   more than 10% 5xx in a minute with at least 100 requests (`R_test ≥ 7` gives 420), in two evaluations in a row.
   So the test shows an incident, and a recovery with three replicas, only when

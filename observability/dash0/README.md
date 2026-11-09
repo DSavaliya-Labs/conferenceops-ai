@@ -38,7 +38,7 @@ flowchart LR
 |---|---|
 | Armed | Only after `scripts/dash0-apply.sh --arm`. Every apply without `--arm` sends it disabled |
 | Trigger | A new failure of **Discovery is rejecting searches** only: exactly one `failed_check.new` trigger with that rule's id, which the apply script checks |
-| Prompt | Investigate with telemetry; tell admission saturation (503 with code `DISCOVERY_CAPACITY_EXHAUSTED`) from upstream failures (Elasticsearch, PostgreSQL, OpenAI) and scheduling or resource failures. The response body isn't in telemetry, so the prompt says where the code can show, how a rejected request's spans look, and that untraced OpenAI and PostgreSQL calls are judged from discovery-api's logs. Only for saturation, open one PR in `DSavaliya-Labs/conferenceops-ai` that changes only `components.discovery.replicas` or `components.discovery.resources` in `deploy/env/aks/values.yaml`, replicas within 1..5, labeled `incident` and `gitar-managed`, with the description sections the review requires (Why, What, How it was verified, Not covered), evidence links and recovery checks. Never tests, CI, review policy, the load test, thresholds or credentials. Otherwise, report the mismatch for a human |
+| Prompt | Investigate with telemetry; tell admission saturation (503 with code `DISCOVERY_CAPACITY_EXHAUSTED`) from upstream failures (Elasticsearch, PostgreSQL, OpenAI) and scheduling or resource failures. The response body isn't in telemetry, so the prompt names where discovery-api records a rejection (the span attribute `conferenceops.error.code`, the counter `conferenceops.admission.rejections` and one warning log line), how a rejected request's spans look, that slower requests fill the in-progress limit too, and that untraced OpenAI and PostgreSQL calls are judged from discovery-api's logs. Only for saturation, open one PR in `DSavaliya-Labs/conferenceops-ai` that changes only `components.discovery.replicas` or `components.discovery.resources` in `deploy/env/aks/values.yaml`, replicas within 1..5, labeled `incident` and `gitar-managed`, with the description sections the review requires (Why, What, How it was verified, Not covered), evidence links and recovery checks. Never tests, CI, review policy, the load test, thresholds or credentials. Otherwise, report the mismatch for a human |
 | Duplicates | Concurrency policy `skip` with one run at a time; the prompt adds evidence to an open `incident` PR instead of opening a second one |
 | Model | `class:advanced`, high reasoning effort |
 | Budget and time | 50 credits per rolling day, 15-minute timeout. Once the day's credits are spent, Dash0 blocks new runs. No budget warning: Dash0 sends it only to a notification channel, and there is none |
@@ -132,16 +132,26 @@ would have matched nothing there. `dataset.yaml` switches them on. The Elasticse
 Python Elasticsearch client sets the stable `db.system.name` and `http.request.method` on its own spans
 (`elasticsearch/_otel.py`, checked in 9.5.1).
 
+Checked on the live `conferenceops` data on Nov 9, before these assets were first applied: the dataset still had
+upgrades off, and discovery-api's server spans carried `http_status_code` and `http_method`, with no
+`http_response_status_code`. **Discovery is rejecting searches** therefore counts a 5xx under either status-code
+label, so it no longer depends on the dataset setting. The other queries still use the stable names and need
+`dataset.yaml` applied.
+
+Admission rejections carry their own span attribute, `conferenceops.error.code` = `DISCOVERY_CAPACITY_EXHAUSTED`
+(label `conferenceops_error_code` on `dash0.spans`; Dash0 turns span attributes into labels, as `http_user_agent`
+shows on the live data). discovery-api also exports `conferenceops.admission.rejections` (with `reason`),
+`conferenceops.admission.in_flight` and `conferenceops.admission.limit` (`backend/conferenceops/admission.py`).
+
 ## Not covered
 
 - The deploy workflow doesn't run the apply yet; that wiring comes after the deploy pull request (#5) merges.
 - No notification channels: checks show in Dash0 and start the automation while it is armed, and nobody is paged.
 - The services don't trace their OpenAI or PostgreSQL calls yet, so a failure there shows only in discovery-api's
   logs and, if it fails a search, as a 5xx. The prompt tells Agent0 to judge them from the logs.
-- Admission control isn't built yet. Its 503 will carry the code `DISCOVERY_CAPACITY_EXHAUSTED` in the response
-  body, which telemetry doesn't capture. When it is built, it should also record the code on discovery-api's server
-  span and as a bounded `reason` on its rejection metric, and the prompt should then name that attribute and metric.
-  Until then the prompt recognizes a rejection by its span shape. One trap for the span attribute: with
+- The dashboard doesn't break out admission rejections yet: its 503 series count every 503. Filtering on
+  `conferenceops_error_code="DISCOVERY_CAPACITY_EXHAUSTED"` would separate them from upstream failures.
+- Admission control records its code in `conferenceops.error.code`, not in `error.type`: with
   `OTEL_SEMCONV_STABILITY_OPT_IN=http`, the ASGI instrumentation (0.66b2) sets `error.type` to the status code when
-  the response starts, which replaces a value the handler set; an attribute of our own avoids that.
+  the response starts, which would replace a value the middleware set.
 - No CPU or memory usage panels: the collector has no kubelet stats receiver.
