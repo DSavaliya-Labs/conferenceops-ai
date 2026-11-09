@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/api/v1/ask": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description A question answered from published transcripts only, with citations that link to the replay. The question
+         *     arrives in the body, never in the URL (PRIV-1).
+         */
+        post: operations["ask_api_v1_ask_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conferences": {
         parameters: {
             query?: never;
@@ -107,6 +128,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ops/transcripts/{session_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Transcript
+         * @description Organizer only (AUTHZ-1). Publishes the transcript: a new revision and its outbox job commit together, and
+         *     the text becomes searchable once the worker has indexed it (TRANSCRIPT-1, DATA-1).
+         */
+        post: operations["publish_transcript_api_v1_ops_transcripts__session_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/ops/transcripts/{session_id}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unpublish Transcript
+         * @description Organizer only (AUTHZ-1). Takes the transcript back to processing, as a correction does: a new revision whose
+         *     projection removes every chunk from search, and no older job can bring them back (DATA-1).
+         */
+        post: operations["unpublish_transcript_api_v1_ops_transcripts__session_id__unpublish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recommendations/next": {
         parameters: {
             query?: never;
@@ -143,6 +206,26 @@ export interface paths {
          * @description Which talks match what I'm interested in? The query arrives in the body, never in the URL (PRIV-1).
          */
         post: operations["search_api_v1_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/sessions/{session_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Replay
+         * @description The captioned replay of a concluded session, with its transcript only once published (TRANSCRIPT-1).
+         */
+        get: operations["get_replay_api_v1_sessions__session_id__replay_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -308,6 +391,50 @@ export interface components {
             /** Profileid */
             profileId: string;
         };
+        /** AskRequest */
+        AskRequest: {
+            /**
+             * Conference
+             * @description Limit to one event, e.g. cloudbridge-summit-2026
+             */
+            conference?: string | null;
+            /**
+             * Limit
+             * @description How many passages may be cited
+             * @default 4
+             */
+            limit: number;
+            /**
+             * Query
+             * @description The question; it travels in the body (PRIV-1)
+             */
+            query: string;
+        };
+        /** AskResponse */
+        AskResponse: {
+            /** Answer */
+            answer: string;
+            /**
+             * Answersource
+             * @description model: written by the model from the cited passages; passages: not model-written, the best-matching passage quoted (the model was slow, down or returned nothing valid)
+             * @enum {string}
+             */
+            answerSource: "model" | "passages";
+            /** Citations */
+            citations: components["schemas"]["Citation"][];
+            /**
+             * Event
+             * @description The event the citations come from
+             */
+            event?: string | null;
+            /** Isfictional */
+            isFictional?: boolean | null;
+            /**
+             * Retrievalmode
+             * @enum {string}
+             */
+            retrievalMode: "hybrid" | "lexical";
+        };
         /** Candidate */
         Candidate: {
             /** Access */
@@ -356,6 +483,48 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** Citation */
+        Citation: {
+            /** Chunkid */
+            chunkId: string;
+            /** Endseconds */
+            endSeconds: number;
+            /**
+             * Excerpt
+             * @description The cited passage, from the published transcript
+             */
+            excerpt: string;
+            /**
+             * Label
+             * @description 'Simulated excerpt' for synthesized media (SPEAKER-1)
+             */
+            label: string;
+            /**
+             * Replaypath
+             * @description The app route of the replay at the cited moment, built by the server
+             */
+            replayPath: string;
+            /** Sessionid */
+            sessionId: string;
+            /** Sessiontitle */
+            sessionTitle: string;
+            /** Speaker */
+            speaker: string;
+            /** Startseconds */
+            startSeconds: number;
+        };
+        /** Cue */
+        Cue: {
+            /** End */
+            end: number;
+            /**
+             * Start
+             * @description Seconds into the replay
+             */
+            start: number;
+            /** Text */
+            text: string;
+        };
         /** DictationResponse */
         DictationResponse: {
             /**
@@ -363,6 +532,17 @@ export interface components {
              * @description The recognized text, for the attendee to review; empty when nothing was recognized
              */
             text: string;
+        };
+        /**
+         * ErrorDetail
+         * @description The body of an error answer (FastAPI's HTTPException).
+         */
+        ErrorDetail: {
+            /**
+             * Detail
+             * @description What went wrong, in words
+             */
+            detail: string;
         };
         /** EventCard */
         EventCard: {
@@ -459,6 +639,29 @@ export interface components {
             /** Personas */
             personas: components["schemas"]["PersonaCard"][];
         };
+        /** PublishRequest */
+        PublishRequest: {
+            /**
+             * Conference
+             * @description The conference the session belongs to, e.g. cloudbridge-summit-2026
+             */
+            conference: string;
+        };
+        /** PublishResponse */
+        PublishResponse: {
+            /**
+             * Changed
+             * @description False when the transcript was already in that state
+             */
+            changed: boolean;
+            /** Note */
+            note: string;
+            /** Revision */
+            revision: number;
+            /** Sessionid */
+            sessionId: string;
+            status: components["schemas"]["TranscriptStatus"];
+        };
         /** Reason */
         Reason: {
             /**
@@ -527,7 +730,7 @@ export interface components {
             conferenceTimeVenue: string;
             /**
              * Excluded
-             * @description How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.
+             * @description How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, NOT_OPEN (held off-site, sold out, or needing a separate registration), ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.
              */
             excluded: {
                 [key: string]: number;
@@ -558,6 +761,43 @@ export interface components {
              * @enum {string}
              */
             window: "today" | "tomorrow_morning" | "any";
+        };
+        /** ReplayMedia */
+        ReplayMedia: {
+            /** Captionsurl */
+            captionsUrl: string;
+            /** Durationseconds */
+            durationSeconds: number;
+            /**
+             * Label
+             * @description 'Simulated excerpt': the media is synthesized for the fictional event (SPEAKER-1)
+             */
+            label: string;
+            /** Url */
+            url: string;
+        };
+        /** ReplaySession */
+        ReplaySession: {
+            /** Conference */
+            conference: string;
+            /** Event */
+            event: string;
+            /** Id */
+            id: string;
+            /** Isfictional */
+            isFictional: boolean;
+            /** Speakers */
+            speakers: string[];
+            /** Startsatvenue */
+            startsAtVenue: string;
+            /** Title */
+            title: string;
+        };
+        /** ReplayView */
+        ReplayView: {
+            media: components["schemas"]["ReplayMedia"];
+            session: components["schemas"]["ReplaySession"];
+            transcript: components["schemas"]["TranscriptView"];
         };
         /** SearchHit */
         SearchHit: {
@@ -616,6 +856,29 @@ export interface components {
              */
             retrievalMode: "hybrid" | "lexical";
         };
+        /**
+         * TranscriptStatus
+         * @enum {string}
+         */
+        TranscriptStatus: "processing" | "published";
+        /** TranscriptView */
+        TranscriptView: {
+            /**
+             * Cues
+             * @description Empty until the transcript is published
+             */
+            cues?: components["schemas"]["Cue"][];
+            /** Label */
+            label: string;
+            /** Revision */
+            revision: number;
+            status: components["schemas"]["TranscriptStatus"];
+            /**
+             * Text
+             * @description The whole transcript; only when published (TRANSCRIPT-1)
+             */
+            text?: string | null;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -638,6 +901,39 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    ask_api_v1_ask_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AskRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AskResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conferences_api_v1_conferences_get: {
         parameters: {
             query?: never;
@@ -654,6 +950,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EventList"];
+                };
+            };
+            /** @description Events aren't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };
@@ -678,6 +983,15 @@ export interface operations {
                     "application/json": components["schemas"]["AccessFactList"];
                 };
             };
+            /** @description No event has that slug */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -685,6 +999,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Access facts aren't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };
@@ -705,6 +1028,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PersonaList"];
+                };
+            };
+            /** @description Personas aren't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };
@@ -774,8 +1106,9 @@ export interface operations {
     my_agenda_api_v1_me_agenda_get: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Demo-Profile-ID"?: string | null;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
             };
             path?: never;
             cookie?: never;
@@ -789,6 +1122,107 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AgendaResponse"];
+                };
+            };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No selectable persona has that ID */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The agenda isn't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    publish_transcript_api_v1_ops_transcripts__session_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-Profile-ID"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unpublish_transcript_api_v1_ops_transcripts__session_id__unpublish_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-Profile-ID"?: string | null;
+            };
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishResponse"];
                 };
             };
             /** @description Validation Error */
@@ -805,8 +1239,9 @@ export interface operations {
     where_next_api_v1_recommendations_next_post: {
         parameters: {
             query?: never;
-            header?: {
-                "X-Demo-Profile-ID"?: string | null;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
             };
             path?: never;
             cookie?: never;
@@ -826,6 +1261,24 @@ export interface operations {
                     "application/json": components["schemas"]["RecommendationResponse"];
                 };
             };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description No selectable persona has that ID */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -833,6 +1286,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Suggestions aren't available right now: the event's schedule isn't imported, search isn't configured, or retrieval failed */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };
@@ -857,6 +1319,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_replay_api_v1_sessions__session_id__replay_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayView"];
                 };
             };
             /** @description Validation Error */

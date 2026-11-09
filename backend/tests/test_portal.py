@@ -289,8 +289,14 @@ def test_a_data_failure_is_503_and_the_log_carries_only_the_error_type(client, c
 # --- Contract (API-1) --------------------------------------------------------------------------------------------
 
 
-def test_the_contract_lists_the_portal_routes_on_the_core_api():
+def test_the_contract_lists_the_portal_routes_with_the_header_required_and_every_answer():
     paths = export_openapi.schema()["paths"]
     assert {"/api/v1/conferences", "/api/v1/conferences/{slug}/access-facts", "/api/v1/me/agenda"} <= set(paths)
-    header = paths["/api/v1/me/agenda"]["get"]["parameters"][0]
-    assert (header["in"], header["name"]) == ("header", "X-Demo-Profile-ID")
+    # A client generated from the contract must send the header, and knows the 400, 404 and 503 it can get (API-1).
+    agenda = paths["/api/v1/me/agenda"]["get"]
+    [header] = agenda["parameters"]
+    assert (header["in"], header["name"], header["required"]) == ("header", "X-Demo-Profile-ID", True)
+    assert header["schema"] == {"type": "string", "format": "uuid"}
+    assert {"200", "400", "404", "422", "503"} == set(agenda["responses"])
+    assert {"200", "503"} == set(paths["/api/v1/conferences"]["get"]["responses"])
+    assert {"200", "404", "422", "503"} == set(paths["/api/v1/conferences/{slug}/access-facts"]["get"]["responses"])

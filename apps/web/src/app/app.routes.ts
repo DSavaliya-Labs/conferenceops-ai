@@ -35,5 +35,11 @@ export const routes: Routes = [
     title: 'How this platform runs · ConferenceOps AI',
     loadComponent: () => import('./pages/operations').then((m) => m.OperationsPage),
   },
+  {
+    // The captioned replay of a concluded CloudBridge session; `?t=<seconds>` opens it at a cited moment.
+    path: 'sessions/:id/replay',
+    title: 'Replay · ConferenceOps AI',
+    loadComponent: () => import('./replay-view').then((m) => m.ReplayViewComponent),
+  },
   { path: '**', redirectTo: 'talks' },
 ];

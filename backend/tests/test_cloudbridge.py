@@ -8,6 +8,7 @@ import uuid
 from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, time, timedelta
 from importlib import resources
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -23,7 +24,7 @@ from conferenceops.cloudbridge import (
     speaker_profile_id,
     to_utc,
 )
-from conferenceops.models import ClockMode, EventKind, Level, Role
+from conferenceops.models import ClockMode, EventKind, Level, Role, TranscriptStatus
 from conferenceops.settings import Settings
 
 VENUE = ZoneInfo("America/Denver")
@@ -429,3 +430,72 @@ def test_the_cli_resets_only_when_asked(monkeypatch):
     assert cloudbridge.main([]) == 0
     assert cloudbridge.main(["--reset"]) == 0
     assert calls == [False, True]
+
+
+# --- The three captioned clips (PLAN §6.1, §9; SPEAKER-1) ------------------------------------------------------------
+
+MEDIA_DIR = Path(__file__).resolve().parents[2] / "apps" / "web" / "public" / "media" / "cloudbridge"
+# CLOUDBRIDGE-SKETCH.md: clip -> (session, speaker, state at demo start).
+SKETCH_CLIPS = [
+    ("2", "S2", TranscriptStatus.PUBLISHED),
+    ("10", "S9", TranscriptStatus.PUBLISHED),
+    ("18", "S9", TranscriptStatus.PROCESSING),
+]
+
+
+def test_the_three_clips_are_the_sketch_clips_and_clip_3_starts_processing():
+    assert [(t.session, t.speaker, t.status) for t in FIXTURE.transcripts] == SKETCH_CLIPS
+    for number, spec in enumerate(FIXTURE.transcripts, start=1):
+        assert 60 <= spec.duration_seconds <= 120, spec.session  # short excerpts, never a whole talk
+        assert (spec.media, spec.captions) == (
+            f"/media/cloudbridge/clip-{number}.mp4",
+            f"/media/cloudbridge/clip-{number}.vtt",
+        )
+        assert spec.cues[0].start >= 1.0  # the label cue and the title slide come first
+        assert spec.cues[-1].end <= spec.duration_seconds
+        assert 100 <= len(" ".join(c.text for c in spec.cues).split()) <= 260  # about 60-90 s of speech
+
+
+def test_the_committed_captions_carry_the_label_the_speaker_and_the_fixture_s_cue_text():
+    # The WebVTT file the player shows and the transcript the API publishes must say the same words.
+    for number, spec in enumerate(FIXTURE.transcripts, start=1):
+        captions = (MEDIA_DIR / f"clip-{number}.vtt").read_text(encoding="utf-8")
+        speaker = next(s.name for s in FIXTURE.speakers if s.key == spec.speaker)
+        assert captions.startswith("WEBVTT\nKind: captions\nLanguage: en\n")
+        assert "[Simulated excerpt: synthesized voice, fictional speaker]" in captions
+        voiced = re.findall(r"^<v ([^>]+)>(.*)$", captions, flags=re.M)
+        assert {name for name, _ in voiced} == {speaker}
+        assert [text for _, text in voiced] == [c.text for c in spec.cues]
+        assert (MEDIA_DIR / f"clip-{number}.mp4").stat().st_size < 1_500_000  # a few MB in all
+
+
+def test_transcript_values_derive_the_text_from_the_cues_and_label_them_simulated():
+    spec = FIXTURE.transcripts[0]
+    values = cloudbridge.transcript_values(spec, "Daniel Kowalczyk")
+    assert values["is_simulated"] is True
+    assert values["text"] == " ".join(c.text for c in spec.cues)
+    assert values["cues"][0] == {"start": spec.cues[0].start, "end": spec.cues[0].end, "text": spec.cues[0].text}
+    assert set(values) == {
+        "speaker_name",
+        "is_simulated",
+        "media_url",
+        "captions_url",
+        "duration_seconds",
+        "text",
+        "cues",
+    }
+
+
+def test_a_transcript_for_a_speaker_who_isn_t_at_that_session_or_with_cues_out_of_order_is_rejected():
+    raw = FIXTURE.model_dump(mode="json")
+    raw["transcripts"][0]["speaker"] = "S9"
+    with pytest.raises(ValidationError, match="transcript 2: 'S9' doesn't speak at that session"):
+        Fixture.model_validate(raw)
+    raw = FIXTURE.model_dump(mode="json")
+    raw["transcripts"][0]["cues"][1]["start"] = 0.0
+    with pytest.raises(ValidationError, match="cues must be in order"):
+        Fixture.model_validate(raw)
+    raw = FIXTURE.model_dump(mode="json")
+    raw["transcripts"][0]["media"] = "https://example.com/clip.mp4"
+    with pytest.raises(ValidationError, match="served by the web container"):
+        Fixture.model_validate(raw)

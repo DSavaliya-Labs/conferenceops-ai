@@ -32,12 +32,24 @@ from conferenceops.models import (
     Session,
     SessionSpeaker,
     Speaker,
+    Transcript,
 )
 
 pytestmark = pytest.mark.integration
 
 BACKEND = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-SEEDED = (Conference, Room, Speaker, Session, SessionSpeaker, Profile, ProfilePreferences, Attendance, AgendaItem)
+SEEDED = (
+    Conference,
+    Room,
+    Speaker,
+    Session,
+    SessionSpeaker,
+    Profile,
+    ProfilePreferences,
+    Attendance,
+    AgendaItem,
+    Transcript,
+)
 EDITED_TITLE = "OpenTelemetry From Zero to Traces (moved to the afternoon)"
 
 
@@ -140,13 +152,15 @@ def test_the_first_load_seeds_the_archive_and_projects_each_session_once(empty):
         "profile_preferences": 8,
         "attendance": 18,
         "agenda_items": 2,
-        "outbox_jobs": 24,
+        "transcripts": 3,  # the three captioned clips; clip 3 starts processing
+        "outbox_jobs": 27,  # one projection per session and per transcript
     }
-    assert result.written["sessions"] == 24
+    assert result.written["sessions"] == 24 and result.written["transcripts"] == 3
     with transaction(empty) as db:
         conf = db.scalars(select(Conference)).one()
         jobs = db.scalars(select(OutboxJob)).all()
         session_ids = set(db.scalars(select(Session.id)))
+        transcript_ids = set(db.scalars(select(Transcript.id)))
         nine = db.get(Profile, profile_id("S9"))
     assert (conf.slug, conf.kind, conf.clock_mode, conf.source) == (
         "cloudbridge-summit-2026",
@@ -155,8 +169,11 @@ def test_the_first_load_seeds_the_archive_and_projects_each_session_once(empty):
         "fixture",
     )
     assert conf.is_fictional and conf.has_transcripts
-    assert {(job.entity_type, job.kind, job.entity_revision) for job in jobs} == {("session", "index", 1)}
-    assert {job.entity_id for job in jobs} == session_ids
+    assert {(job.entity_type, job.kind, job.entity_revision) for job in jobs} == {
+        ("session", "index", 1),
+        ("transcript", "index", 1),
+    }
+    assert {job.entity_id for job in jobs} == session_ids | transcript_ids
     assert (nine.display_name, nine.role, nine.demo_selectable) == ("Ananya Iyer", "speaker", False)
 
 
@@ -189,8 +206,8 @@ def test_a_second_load_changes_nothing_and_enqueues_nothing(empty, reset):
 
     assert again.written == Counter()
     assert not again.changed
-    assert _snapshot(empty) == before  # same rows, revisions and timestamps; still 24 outbox jobs
-    assert _counts(empty)["outbox_jobs"] == 24
+    assert _snapshot(empty) == before  # same rows, revisions and timestamps; still 27 outbox jobs
+    assert _counts(empty)["outbox_jobs"] == 27
 
 
 def test_a_re_run_keeps_what_organizers_and_personas_changed(empty):
@@ -209,7 +226,7 @@ def test_a_re_run_keeps_what_organizers_and_personas_changed(empty):
     assert (three.title, three.revision) == (EDITED_TITLE, 2)
     assert (grace.wants_captions, grace.revision) == (True, 2)
     assert _bookmarks(empty, "P1") == {"3", "18"}  # the bookmark she removed doesn't come back
-    assert _counts(empty)["outbox_jobs"] == 25  # the seed's 24 and the organizer's edit; none from the re-run
+    assert _counts(empty)["outbox_jobs"] == 28  # the seed's 27 and the organizer's edit; none from the re-run
 
 
 def test_a_reset_puts_back_what_the_fixture_owns_and_nothing_else(empty):
@@ -253,7 +270,7 @@ def test_a_changed_abstract_reaches_the_database_only_through_a_reset(empty):
     assert five.revision == 2
     assert five.abstract.endswith("Now with slides.")
     assert [(job.entity_id, job.entity_revision) for job in new_jobs] == [(five.id, 2)]
-    assert _counts(empty)["outbox_jobs"] == 25
+    assert _counts(empty)["outbox_jobs"] == 28
 
 
 def test_a_reset_removes_sessions_rooms_and_speakers_that_left_the_fixture(empty):
@@ -302,7 +319,7 @@ def test_a_reset_removes_sessions_rooms_and_speakers_that_left_the_fixture(empty
     assert deletes == [(cancelled_id, 2)]  # one above its index job, so search drops it and no older job revives it
     assert _bookmarks(empty, "P1") == {"17", "18"}  # her bookmark went with the session
     counts = _counts(empty)
-    assert (counts["sessions"], counts["session_speakers"], counts["outbox_jobs"]) == (24, 26, 26)
+    assert (counts["sessions"], counts["session_speakers"], counts["outbox_jobs"]) == (24, 26, 29)
     assert counts["profiles"] == 40  # profiles are never deleted: they're people, and may own posts
 
 
@@ -331,7 +348,7 @@ def test_a_reset_changes_a_session_s_speakers_without_reprojecting_it(empty):
             )
         )
     assert panel == {"S1", "S2", "S5"}
-    assert _counts(empty)["outbox_jobs"] == 24  # no session field changed, so there's nothing to re-project
+    assert _counts(empty)["outbox_jobs"] == 27  # no session field changed, so there's nothing to re-project
 
 
 def test_concurrent_loads_wait_for_each_other_instead_of_failing(empty):
@@ -365,7 +382,7 @@ def test_concurrent_loads_wait_for_each_other_instead_of_failing(empty):
 
     assert written == Counter()  # it found the first load's rows instead of colliding with them
     counts = _counts(empty)
-    assert (counts["conferences"], counts["sessions"], counts["outbox_jobs"]) == (1, 24, 24)
+    assert (counts["conferences"], counts["sessions"], counts["outbox_jobs"]) == (1, 24, 27)
 
 
 def test_the_cli_loads_the_packaged_fixture_into_database_url(empty):
@@ -373,4 +390,4 @@ def test_the_cli_loads_the_packaged_fixture_into_database_url(empty):
     assert cloudbridge.main([]) == 0  # as a deploy hook would, on every upgrade
     assert cloudbridge.main(["--reset"]) == 0
     counts = _counts(empty)
-    assert (counts["sessions"], counts["profiles"], counts["outbox_jobs"]) == (24, 39, 24)
+    assert (counts["sessions"], counts["profiles"], counts["outbox_jobs"]) == (24, 39, 27)

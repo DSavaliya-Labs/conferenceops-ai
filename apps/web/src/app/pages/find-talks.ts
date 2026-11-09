@@ -1,5 +1,6 @@
 import { Component, computed, inject } from '@angular/core';
 
+import { AskAnswer } from '../ask-answer';
 import { Icon } from '../icons';
 import { SearchService } from '../search';
 import { SessionCard } from '../session-card';
@@ -15,7 +16,7 @@ const SUGGESTIONS = [
 /** Find talks: the results of the Ask bar's typed question, with honest empty, loading and error states. */
 @Component({
   selector: 'app-find-talks',
-  imports: [Icon, SessionCard],
+  imports: [AskAnswer, Icon, SessionCard],
   template: `
     <div class="page">
       <header class="page-header">
@@ -23,7 +24,8 @@ const SUGGESTIONS = [
         <p class="lead">
           Search both events in your own words. Keywords and meaning side by side, over the official
           KubeCon schedule and the fictional CloudBridge archive, with every result labeled by its
-          event.
+          event. Under the results, the archive's published transcripts answer the question, with
+          cited moments that open the replay.
         </p>
       </header>
 
@@ -89,6 +91,8 @@ const SUGGESTIONS = [
           }
         }
       }
+
+      <app-ask-answer [question]="search.lastQuery()" />
     </div>
   `,
   styles: `

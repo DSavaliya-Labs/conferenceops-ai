@@ -1,0 +1,63 @@
+/* The cited answer from the archive, on the portal's tokens. The badges use the global .badge. */
+.ask-answer {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-1);
+}
+.ask-answer h2 {
+  font-size: var(--text-xl);
+}
+.ask-answer h3 {
+  margin-top: var(--space-2);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+}
+.labels,
+.hint,
+.source {
+  color: var(--ink-3);
+  font-size: var(--text-sm);
+}
+.labels .badge {
+  margin-right: var(--space-1);
+}
+.answer {
+  font-size: var(--text-lg);
+  color: var(--ink);
+}
+.error {
+  color: var(--danger);
+  font-weight: 600;
+}
+.citations {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--space-3);
+}
+.citations a {
+  font-weight: 600;
+}
+.citations .badge {
+  margin-left: var(--space-2);
+}
+.citations q {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--ink-2);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

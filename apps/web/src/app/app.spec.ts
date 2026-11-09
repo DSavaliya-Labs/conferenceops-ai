@@ -202,6 +202,57 @@ describe('The Ask bar', () => {
     expect(view.el.querySelectorAll('.results app-session-card').length).toBe(1);
   });
 
+  it('also asks the archive, and shows the cited answer under the results with its replay link', async () => {
+    const view = await start();
+    await ask(view, 'what did the agent get wrong');
+    view.http.expectOne('/api/v1/search').flush({ results: [HIT], retrievalMode: 'hybrid' });
+    const asked = view.http.expectOne('/api/v1/ask');
+    expect(asked.request.method).toBe('POST');
+    expect(asked.request.body).toEqual({ query: 'what did the agent get wrong' });
+    asked.flush({
+      answer: 'The agent blamed a healthy database; a config push had emptied the connection pool.',
+      answerSource: 'model',
+      citations: [
+        {
+          chunkId: 't:1:0',
+          sessionId: 'cb-2',
+          sessionTitle: 'AI SRE in Practice: What Our Agent Got Wrong',
+          speaker: 'Daniel Kowalczyk',
+          startSeconds: 18.98,
+          endSeconds: 27.3,
+          replayPath: '/sessions/cb-2/replay?t=18.98',
+          excerpt: 'The database was fine.',
+          label: 'Simulated excerpt',
+        },
+      ],
+      retrievalMode: 'hybrid',
+      event: 'CloudBridge Summit 2026',
+      isFictional: true,
+    });
+    await settle(view);
+    const archive = view.el.querySelector('main .ask-answer')!;
+    expect(text(archive.querySelector('h2'))).toBe('From the CloudBridge archive');
+    expect(text(archive)).toContain('Simulated excerpt');
+    expect(archive.querySelector('.citations a')?.getAttribute('href')).toBe(
+      '/sessions/cb-2/replay?t=18.98',
+    );
+    expect(view.el.querySelectorAll('.results app-session-card').length).toBe(1);
+  });
+
+  it('renders a replay route inside the shell, with the navigation still there', async () => {
+    const view = await start();
+    await navigate(view, '/sessions/cb-2/replay?t=18.98');
+    view.http
+      .expectOne('/api/v1/sessions/cb-2/replay')
+      .flush({ detail: 'No replay' }, { status: 404, statusText: 'Not Found' });
+    await settle(view);
+    expect(view.el.querySelector('nav[aria-label="Main"]')).not.toBeNull();
+    expect(text(view.el.querySelector('main [role="alert"]'))).toContain(
+      'This session has no replay',
+    );
+    expect(view.el.querySelector('nav[aria-label="Main"] a[aria-current="page"]')).toBeNull();
+  });
+
   it('keeps the results when the attendee moves to another page and back', async () => {
     const view = await start();
     await ask(view, 'policy');

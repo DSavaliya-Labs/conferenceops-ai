@@ -23,7 +23,7 @@ from sqlalchemy import func, select
 
 from conferenceops.db import transaction
 from conferenceops.models import AccessFact, AgendaItem, Attendance, Conference, Profile, Room, Session, Speaker
-from conferenceops.personas import demo_profile_id
+from conferenceops.personas import DEMO_PROFILE_OPENAPI, DEMO_PROFILE_RESPONSES, ErrorDetail, demo_profile_id
 from conferenceops.search import ApiModel, venue_time
 
 log = logging.getLogger("conferenceops.portal")
@@ -319,7 +319,12 @@ def _unavailable(what: str, exc: Exception) -> HTTPException:
     return HTTPException(status_code=503, detail=f"{what.capitalize()} aren't available right now")
 
 
-@router.get("/api/v1/conferences", response_model=EventList, response_model_by_alias=True)
+@router.get(
+    "/api/v1/conferences",
+    response_model=EventList,
+    response_model_by_alias=True,
+    responses={503: {"model": ErrorDetail, "description": "Events aren't available right now"}},
+)
 def list_conferences(data: Data) -> EventList:
     """The events on the platform: the real, current KubeCon and the fictional, concluded CloudBridge Summit."""
     try:
@@ -329,7 +334,15 @@ def list_conferences(data: Data) -> EventList:
     return EventList(events=[event_card(row) for row in rows])
 
 
-@router.get("/api/v1/conferences/{slug}/access-facts", response_model=AccessFactList, response_model_by_alias=True)
+@router.get(
+    "/api/v1/conferences/{slug}/access-facts",
+    response_model=AccessFactList,
+    response_model_by_alias=True,
+    responses={
+        404: {"model": ErrorDetail, "description": "No event has that slug"},
+        503: {"model": ErrorDetail, "description": "Access facts aren't available right now"},
+    },
+)
 def list_access_facts(slug: Annotated[str, Path(max_length=64)], data: Data) -> AccessFactList:
     """The access facts stored for an event, each with its source link and the date it was read (ACCESS-1). Nothing
     is inferred: an event that publishes none gets an empty list, and no route is ever labeled step-free."""
@@ -347,7 +360,16 @@ def list_access_facts(slug: Annotated[str, Path(max_length=64)], data: Data) -> 
     )
 
 
-@router.get("/api/v1/me/agenda", response_model=AgendaResponse, response_model_by_alias=True)
+@router.get(
+    "/api/v1/me/agenda",
+    response_model=AgendaResponse,
+    response_model_by_alias=True,
+    openapi_extra=DEMO_PROFILE_OPENAPI,  # the header is required, and the contract says so (API-1)
+    responses={
+        **DEMO_PROFILE_RESPONSES,
+        503: {"model": ErrorDetail, "description": "The agenda isn't available right now"},
+    },
+)
 def my_agenda(profile_id: Annotated[uuid.UUID, Depends(demo_profile_id)], data: Data) -> AgendaResponse:
     """The persona's bookmarks and the sessions she attended. The persona comes from X-Demo-Profile-ID (AUTHZ-1);
     public fields only, never her preferences (PRIV-1)."""
