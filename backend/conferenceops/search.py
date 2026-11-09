@@ -3,10 +3,9 @@ in Python (PLAN §8.2). If query embedding fails, search keeps working on BM25 a
 
 import logging
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Literal, Protocol
 from uuid import UUID
-from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
@@ -21,7 +20,8 @@ log = logging.getLogger("conferenceops.search")
 
 RRF_K = 60
 CANDIDATES = 50
-VENUE_TZ = ZoneInfo("America/Denver")
+# Mountain Standard Time is UTC-7. A fixed offset skips the tzdata lookup on every hit.
+VENUE_TZ = timezone(timedelta(hours=-7), "MST")
 
 
 class ApiModel(BaseModel):
