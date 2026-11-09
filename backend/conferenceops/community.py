@@ -183,8 +183,10 @@ def seed_posts(db: DbSession, author_of: Callable[[str], uuid.UUID]) -> int:
                 created_at=SEED_ANCHOR - timedelta(minutes=minutes),
             )
             .on_conflict_do_nothing(index_elements=["id"])
+            .returning(Post.id)
         )
-        added += created.rowcount or 0
+        # RETURNING lists only the inserted row; the driver's rowcount isn't reliable for this statement.
+        added += len(created.all())
     return added
 
 
