@@ -46,6 +46,7 @@ and shows a platform run by an AI operations team.
 | `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean) |
 | `.github/workflows/` | CI (`ci.yml`), deploy, Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
+| `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
 
 When you add a module, a route or a top-level directory, add it here in the same pull request.
 
