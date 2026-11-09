@@ -100,6 +100,15 @@ Review findings cite these IDs.
   - Merge commits only; the branch is deleted after merge.
   - After a stacked PR merges, check the next PR's base before deleting any branch.
 
+## Web app commands
+
+```bash
+cd apps/web && npm ci
+npx ng test --watch=false   # unit and accessibility tests (Vitest)
+npx ng build                # production build into dist/web/browser
+docker build -t conferenceops-web apps/web   # nginx (unprivileged, :8080) serving the app, /config.json and the /api proxy
+```
+
 ## Never
 
 - Commit or print secrets.
