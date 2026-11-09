@@ -25,10 +25,10 @@ hand at 21:28:
 | Admission control on discovery (#32, #36) | one hand-sent search was answered `503 {"code":"DISCOVERY_CAPACITY_EXHAUSTED","retry_after_seconds":1,…}` while the pod was at its limit; the next one got 200 |
 | Deploy on every merge, marked in Dash0 | 12 deploy runs today: 10 succeeded, 1 failed and was fixed by the next merge, 1 was cancelled ([deploys](#deploys)) |
 
-**Pending** (not claimed): the incident run and its recovery window, Radar's verify step after #35, the attendee
-portal UI pull request, CloudBridge replays and transcripts (and captions with them: opened as
-[#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37) at 21:30, not merged), and a dictation demo on an
-HTTPS origin. Details under each track and in [Known limitations](#known-limitations).
+**Measured since the first version of this page:** the incident run and its recovery window (below) and Radar's
+verify step after #35. **Pending** (not claimed): the attendee portal UI pull request, CloudBridge replays and
+transcripts (and captions with them: [#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37)), and a
+dictation demo on an HTTPS origin. Details under each track and in [Known limitations](#known-limitations).
 
 Live progress: the [Build log](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) (issue #1, one entry per
 closed pull request) and the
@@ -155,10 +155,28 @@ Everything Dash0 is code in [`observability/dash0/`](observability/dash0) (datas
 | A bug found by running the rule against live data | [#31](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/31): the live spans carried the old `http_status_code` label, so the rule's `http_response_status_code` matcher counted nothing, and the incident could never have fired. Fixed at the source (`OTEL_SEMCONV_STABILITY_OPT_IN=http`, a regression test that fails without it) and verified at 21:12: fresh discovery spans carry `http_request_method=POST` and `http_response_status_code=200` |
 | Agent0 automation **ConferenceOps: fix discovery capacity** | [`automations/discovery-capacity-fix.json`](observability/dash0/automations/discovery-capacity-fix.json) and [its prompt](observability/dash0/automations/discovery-capacity-fix.prompt.md): triggers on that one check, may change only the discovery replicas or resources in `deploy/env/aks/values.yaml` (OPS-1), 50 credits a day, one run at a time. **Disarmed** until the incident run: `scripts/dash0-apply.sh --arm` right before it. Dash0's GitHub integration covers this repository (checked on November 9) |
 
-**Incident run: pending.** What will be recorded when it runs: the k6 Job offering about 80 requests/s to one
-discovery pod, the check failing, the Agent0 thread and the incident pull request it opens (discovery replicas only),
-Gitar's review and the `incident-scope` check on it, the deploy, and the recovery window read from Dash0 (60 s after
-the rollout, at least 400 requests, under 1% failures, p95 under 1.5 s).
+**The incident run (November 9, 21:27–21:52 UTC).** The k6 Job offered 80 requests/s to one discovery pod with the
+measured limit of 24 in flight, and the offered load never changed (OPS-1):
+
+| Time (UTC) | What happened | Evidence |
+|---|---|---|
+| 21:27:52 | Load starts: 80 /s against `conferenceops-discovery` (1 replica) | k6 summary; Dash0 spans: 21:29 minute 3,448 OK / 1,297 rejected (27%) |
+| 21:29:06 | Check **Discovery is rejecting searches** fails (critical, observed 26.6%) | Dash0 failed check `14477624050445699180` |
+| 21:34:45–21:38:59 | Agent0 investigates with the automation's prompt: every 5xx is a `DISCOVERY_CAPACITY_EXHAUSTED` 503 from the only pod at 24/24 slots (~21–22 rejections/s), one pod accepts ~58.5 /s, Elasticsearch ~14 ms and 0 errors, OpenAI 200s, replicas 1/1 with 0 restarts; verdict **admission saturation**, fix replicas 1 → 3 (80 ÷ 58.5 = 1.37 → 2, plus one of headroom) | Agent0 thread `c06494a3-10e3-42b6-920c-77b9da256473` (Dash0 org members) |
+| 21:44:06 | Incident PR [#44](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/44) opened with Agent0's diff and description, labels `incident` and `gitar-managed` | [#44](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/44) |
+| 21:46:40 | Gitar approves; the `incident-scope` check passes (only `components.discovery.replicas` changed) | #44 checks and review |
+| 21:46:47 | Merged (72b5693); deploy run starts 21:46:56 | [run 42705719050](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42705719050) |
+| ~21:48:45 | `conferenceops-discovery` at 3/3 ready; the three new pods each serve 1,591–1,628 requests/min | Dash0 `sum by (k8s_pod_name)` on `dash0.spans` |
+| 21:50 and 21:51 | **Recovery window:** 4,802 requests/min, 0 5xx, p95 0.33 s in each minute (one pod under the same load: 0.60 s with 27% rejected) | Dash0 per-minute queries on `POST /api/v1/search` |
+| 21:50:06 | The check resolves: 21 minutes from failure to recovery, 6 minutes from the PR to recovery | Dash0 failed checks |
+
+Two honest notes. The armed automation did **not** start a run for this failure: Dash0 reused the issue identifier
+from the 21:22 calibration failure, so no `failed_check.new` event was raised. The plan's fallback was used: the
+builder started Agent0 by hand through the Dash0 MCP with the automation's own prompt, and, because GitHub is
+read-only over that connection and no PR appeared from the thread within three minutes, pushed Agent0's pull
+request unchanged as #44, crediting the thread in its body. The review, the merge, the deploy and the recovery
+measurement are exactly the loop the plan describes; the trigger is the part to fix next (a fresh issue, or a
+`failed_check` trigger that also fires on re-opened issues).
 
 ### Radar: AI SRE, read-only
 
@@ -181,8 +199,11 @@ that, so a hung worker is restarted instead of looking healthy. Merged at 21:11 
 [run 42700125904](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42700125904). The PR body quotes
 Radar's evidence and what it ruled out.
 
-**Verify step: pending.** `scripts/radar-investigate.sh --verify 35 deployment/conferenceops-worker -n conferenceops`
-runs Radar again on the deployed worker and posts the verdict on #35.
+**Verify step, done.** After #35 deployed, `scripts/radar-investigate.sh --verify 35 deployment/conferenceops-worker
+-n conferenceops` ran Radar again (run `run-dd944424fc`, 21:24–21:26 UTC): **healthy**, certainty established,
+confidence 0.9, "running normally on its newest image, with no restarts or errors"; the `livenessProbeMissing`
+finding no longer appears. The verdict is posted on
+[#35](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/35#issuecomment-6751877278).
 
 ### Elasticsearch
 
@@ -234,8 +255,8 @@ One discovery pod, no admission control yet, a k6 Job inside the cluster against
   The `incident-scope` check rejects any change to the limit on an incident pull request (OPS-1).
 - **Calibration after #36 deployed** (21:18–21:22, 90 s each, from the k6 summaries kept by the builder): 64 /s →
   5,760 sent, 14 rejected with `DISCOVERY_CAPACITY_EXHAUSTED` (0.24%), p95 432 ms, every target met; 80 /s → 7,201
-  sent, 1,860 rejected (25.8%), no timeouts, no dropped iterations, p95 of the accepted requests 638 ms. Whether the
-  pod stayed up without a restart during the 80 /s run is still to be read from the cluster: **pending**.
+  sent, 1,860 rejected (25.8%), no timeouts, no dropped iterations, p95 of the accepted requests 638 ms. The pod
+  stayed up through both runs: 0 restarts (`kubectl get pods` after each run), unlike the unlimited pod at 96 /s.
 - **The offered peak** for the incident is derived in [`ops/load/README.md`](ops/load/README.md): `T_max` = 21
   talks starting in the same minute (measured from the feed), the rest assumptions; the incident needs
   `1.2 × C_pod ≤ R_test`, so about **80 requests/s**.
@@ -388,11 +409,11 @@ flowchart TB
 ## Known limitations
 
 - **No social features.** No posts, reposts, follows, notifications, moderation or image upload.
-- **One incident, and it hasn't run yet.** The discovery capacity incident is prepared (the check, the armed-on-demand
-  automation, the measured limit, the load); its run and recovery numbers are pending. The secondary CPU incident
-  from the plan isn't built.
-- **The acceptance matrix isn't fully run.** The incident recovery window and Radar's verify step after #35 are
-  pending; the k6 tooling tests aren't in CI.
+- **One incident.** The discovery capacity incident ran once, with its recovery measured (see Dash0 and Agent0).
+  The automation's trigger didn't fire for it (issue identifier reused), so the investigation was started by hand
+  with the same prompt. The secondary CPU incident from the plan isn't built.
+- **The acceptance matrix isn't fully run.** The incident recovery window and Radar's verify step are measured;
+  the k6 tooling tests aren't in CI, and the incident ran once, not repeatedly.
 - **The planted defect stays open.** #28 is blocked by Gitar and held with `do-not-merge` as evidence; it will be
   closed without merging.
 - **No generated explanations.** "Where should I go next?" is the deterministic answer only; the typed Ask bar is
