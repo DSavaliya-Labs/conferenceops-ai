@@ -1,7 +1,7 @@
 name: deploy
 
 # Every merge to main: build the backend and web images, deploy the chart to AKS, check what the public URL serves (the
-# app, its config and a search through the proxy), and mark the deploy in Dash0.
+# app, its config and a search through the proxy), and mark the deploy in Dash0, succeeded or failed.
 # Azure sign-in is OIDC (scripts/azure-setup.sh): the identity trusts only this repository's `aks` environment, and
 # only `main` can deploy to it, so no Azure secret exists to leak or rotate.
 
@@ -41,6 +41,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      # Installed first, so the failure marker at the end can be sent whichever step fails.
+      - name: Install the Dash0 CLI
+        uses: dash0hq/dash0-cli/.github/actions/setup@v1.1.0
 
       - name: Sign in to Azure (OIDC)
         uses: azure/login@v2
@@ -127,22 +131,20 @@ jobs:
             sleep 5
           done
 
-      - name: Install the Dash0 CLI
-        uses: dash0hq/dash0-cli/.github/actions/setup@v1.1.0
-
+      # One dash0.deployment event per service, after the deploy completed, successfully or not, as Dash0's deployment
+      # event convention asks: scripts/dash0-deploy-marker.sh sends them. The failure step marks the tag as failed
+      # whichever step failed, since the tag didn't reach AKS either way. The token stays in the environment.
       - name: Mark the deploy in Dash0
         env:
           DASH0_OTLP_URL: https://ingress.us-west-2.aws.dash0.com
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
           DASH0_DATASET: conferenceops
-        run: |
-          for service in web core-api discovery-api worker; do
-            dash0 logs send "Deployed $TAG" --event-name dash0.deployment --severity-number 9 \
-              --resource-attribute "service.name=$service" \
-              --resource-attribute "service.namespace=conferenceops" \
-              --resource-attribute "service.version=$TAG" \
-              --resource-attribute "deployment.environment.name=aks" \
-              --log-attribute "deployment.status=succeeded" \
-              --log-attribute "vcs.repository.url.full=${{ github.server_url }}/${{ github.repository }}" \
-              --log-attribute "vcs.ref.head.revision=$TAG"
-          done
+        run: ./scripts/dash0-deploy-marker.sh succeeded "$TAG"
+
+      - name: Mark the failed deploy in Dash0
+        if: failure()
+        env:
+          DASH0_OTLP_URL: https://ingress.us-west-2.aws.dash0.com
+          DASH0_AUTH_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
+          DASH0_DATASET: conferenceops
+        run: ./scripts/dash0-deploy-marker.sh failed "$TAG"
