@@ -21,6 +21,7 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=8", "httpx2", "ruff>=0.6"]
+media = ["pillow>=11"]  # scripts/cloudbridge_media.py only: the title slide of each replay clip
 
 [project.scripts]
 core-api = "conferenceops.core_app.main:run"

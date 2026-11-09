@@ -7,8 +7,9 @@ anyone can pick any persona (PLAN §1.3).
 The listing carries public profile fields only. Private preferences live in `profile_preferences` and never leave
 the server through this module (PRIV-1)."""
 
+import logging
 import uuid
-from typing import Annotated, Protocol
+from typing import Annotated, Any, Protocol
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -18,7 +19,36 @@ from sqlalchemy import select
 from conferenceops.db import transaction
 from conferenceops.models import Profile
 
+log = logging.getLogger("conferenceops.personas")
+
 DEMO_PROFILE_HEADER = "X-Demo-Profile-ID"
+
+
+class ErrorDetail(BaseModel):
+    """The body of an error answer (FastAPI's HTTPException)."""
+
+    detail: str = Field(description="What went wrong, in words")
+
+
+# How a route that depends on `demo_profile_id` states the header in the contract (API-1). FastAPI sees the header as
+# optional, so a missing one gets this module's 400 rather than a validation 422; the contract says what a client must
+# send: the header is required.
+DEMO_PROFILE_OPENAPI: dict[str, Any] = {
+    "parameters": [
+        {
+            "name": DEMO_PROFILE_HEADER,
+            "in": "header",
+            "required": True,
+            "description": "The demo persona the request acts as. The server looks her up and trusts nothing else the "
+            "client says about her (AUTHZ-1).",
+            "schema": {"type": "string", "format": "uuid"},
+        }
+    ]
+}
+DEMO_PROFILE_RESPONSES: dict[int | str, dict[str, Any]] = {
+    400: {"model": ErrorDetail, "description": f"No persona chosen: {DEMO_PROFILE_HEADER} is missing or empty"},
+    404: {"model": ErrorDetail, "description": "No selectable persona has that ID"},
+}
 
 
 class PersonaCard(BaseModel):
@@ -67,10 +97,11 @@ def get_persona_directory() -> PersonaDirectory:
 
 
 def demo_profile_id(
-    x_demo_profile_id: Annotated[str | None, Header(alias=DEMO_PROFILE_HEADER)] = None,
+    x_demo_profile_id: Annotated[str | None, Header(alias=DEMO_PROFILE_HEADER, include_in_schema=False)] = None,
 ) -> uuid.UUID:
     """The persona a request acts as. Missing: 400. Not a UUID: 404, like any profile that doesn't exist; the caller
-    still checks that the ID belongs to a selectable persona (AUTHZ-1)."""
+    still checks that the ID belongs to a selectable persona (AUTHZ-1). A route using this declares
+    `DEMO_PROFILE_OPENAPI` and `DEMO_PROFILE_RESPONSES`, so the contract shows the header as required."""
     if not x_demo_profile_id or not x_demo_profile_id.strip():
         raise HTTPException(status_code=400, detail=f"Choose a persona first: send {DEMO_PROFILE_HEADER}")
     try:
@@ -82,7 +113,12 @@ def demo_profile_id(
 router = APIRouter(tags=["personas"])
 
 
-@router.get("/api/v1/demo/profiles", response_model=PersonaList, response_model_by_alias=True)
+@router.get(
+    "/api/v1/demo/profiles",
+    response_model=PersonaList,
+    response_model_by_alias=True,
+    responses={503: {"model": ErrorDetail, "description": "Personas aren't available right now"}},
+)
 def list_demo_profiles(directory: Annotated[PersonaDirectory, Depends(get_persona_directory)]) -> PersonaList:
     """The personas the profile switcher offers. Public fields only: never preferences or access needs (PRIV-1)."""
     try:
@@ -90,4 +126,7 @@ def list_demo_profiles(directory: Annotated[PersonaDirectory, Depends(get_person
     except HTTPException:
         raise
     except Exception as exc:
+        # The 503 replaces the error, so this line is where its cause shows up. PRIV-1: the type only; a database
+        # error's message can quote the statement and its parameters.
+        log.error("persona listing failed: %s", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Personas aren't available right now") from exc
