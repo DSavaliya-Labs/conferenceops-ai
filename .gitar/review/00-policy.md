@@ -4,9 +4,10 @@
    one when it applies.
 2. `project.md` lists what is easy to miss in this repository; `severity.md` says how to grade.
 3. The numbered files here (`01-` to `06-`) are the general engineering standards for this codebase: security,
-   coding, design, API and data, testing and operations, delivery. They have their own IDs (SEC-, CODE-, DESIGN-,
-   API-, DATA-, TEST-, OPS-, DEL-) so a finding can point at the exact expectation. Where a general standard and an
-   `AGENTS.md` rule overlap, cite the `AGENTS.md` rule.
+   coding, design, API and data, testing and operations, delivery. They have their own IDs, always written with
+   the `STD-` prefix and two digits (`STD-SEC-01`, `STD-OPS-11`), so a finding can point at the exact expectation and
+   can never be mistaken for an `AGENTS.md` rule (`SEC-1`, `OPS-1`). Where a general standard and an `AGENTS.md` rule
+   overlap, cite the `AGENTS.md` rule.
 4. The rules in `.gitar/rules/` are the checks that run on every pull request they match. They are the enforcement;
    the files here are the explanation.
 
