@@ -1,6 +1,8 @@
 # What to look for in this repository
 
-Read `AGENTS.md` first: its rules (ACCESS-1 to TEST-1) are the review standard. Points that are easy to miss here:
+Read `AGENTS.md` first: its rules (ACCESS-1 to TEST-1) are the review standard. The numbered files next to this one
+(`00-policy.md` to `06-delivery.md`) are the general engineering standards for the codebase and apply where
+`AGENTS.md` is silent; `severity.md` says how to grade. Points that are easy to miss here:
 
 - **Attendee-facing honesty** comes before everything else.
   - "Where should I go next?" may only show access statements that exist in `access_facts`, with their link. When a
