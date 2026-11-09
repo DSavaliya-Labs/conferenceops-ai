@@ -24,6 +24,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dictation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dictate
+         * @description Transcribe one short recording, sent as the request body with its audio media type. The text comes back for the
+         *     attendee to review and edit in the Ask bar; nothing is searched until they submit (PLAN §9.2).
+         */
+        post: operations["dictate_api_v1_dictation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/recommendations/next": {
         parameters: {
             query?: never;
@@ -182,6 +203,14 @@ export interface components {
             startsAtVenue: string;
             /** Title */
             title: string;
+        };
+        /** DictationResponse */
+        DictationResponse: {
+            /**
+             * Text
+             * @description The recognized text, for the attendee to review; empty when nothing was recognized
+             */
+            text: string;
         };
         /**
          * ErrorDetail
@@ -442,6 +471,68 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorDetail"];
                 };
+            };
+        };
+    };
+    dictate_api_v1_dictation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description The recording itself, at most 10 MB and 60 seconds. */
+        requestBody: {
+            content: {
+                "audio/m4a": string;
+                "audio/mp3": string;
+                "audio/mp4": string;
+                "audio/mpeg": string;
+                "audio/ogg": string;
+                "audio/wav": string;
+                "audio/wave": string;
+                "audio/webm": string;
+                "audio/x-m4a": string;
+                "audio/x-wav": string;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationResponse"];
+                };
+            };
+            /** @description The recording is empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The recording is larger than the app's limit */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The body isn't an audio type the recorder produces */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Transcription isn't configured or isn't available; typing still works */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

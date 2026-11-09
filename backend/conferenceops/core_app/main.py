@@ -2,12 +2,14 @@
 
 import uvicorn
 
+from conferenceops.dictation import router as dictation_router
 from conferenceops.personas import router as personas_router
 from conferenceops.settings import settings
 from conferenceops.web import create_app
 
 app = create_app("core-api")
 app.include_router(personas_router)  # GET /api/v1/demo/profiles: the personas the switcher offers
+app.include_router(dictation_router)  # POST /api/v1/dictation: the spoken half of the Ask bar
 
 
 def run() -> None:
