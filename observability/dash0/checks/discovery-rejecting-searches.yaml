@@ -2,17 +2,28 @@
 # id stable (scripts/dash0-apply.sh checks that the automation names it).
 #
 # Counts discovery-api server spans (Dash0's dash0.spans metric), so it needs no application metric. A 503 is either
-# the per-pod admission control turning work away (code DISCOVERY_CAPACITY_EXHAUSTED) or a failed search upstream;
-# the check fires on both, and the automation tells them apart. Dash0 evaluates a check at most once a minute, so
-# the window is one minute; `for: 1m` asks for two failing evaluations in a row, so one bad minute doesn't start the
-# automation, and the top-level `and` keeps the check inactive below 100 requests in the window.
+# the per-pod admission control turning work away (code DISCOVERY_CAPACITY_EXHAUSTED, also on the span as
+# conferenceops.error.code) or a failed search upstream; the check fires on both, and the automation tells them
+# apart. Dash0 evaluates a check at most once a minute, so the window is one minute; `for: 1m` asks for two failing
+# evaluations in a row, so one bad minute doesn't start the automation, and the top-level `and` keeps the check
+# inactive below 100 requests in the window.
+#
+# The status code arrives under one of two labels. The FastAPI instrumentation writes http.status_code
+# (http_status_code), and Dash0 renames it to http.response.status_code (http_response_status_code) only while the
+# dataset's semantic convention upgrades are on (../dataset.yaml). On Nov 9 the conferenceops dataset had them off, so
+# every discovery-api server span carried http_status_code and a matcher on the new name alone counted nothing. The
+# `or` counts either label; a series that carries both is counted once.
 apiVersion: dash0.com/v1alpha1
 kind: CheckRule
 id: 7f910f6b-1c6a-461f-9018-fbfa66498555
 name: Discovery is rejecting searches
 expression: |-
   (
-    sum by (service_namespace, service_name) (increase({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER", http_response_status_code=~"5.."}[1m]))
+    sum by (service_namespace, service_name) (
+      increase({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER", http_response_status_code=~"5.."}[1m])
+      or
+      increase({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER", http_status_code=~"5.."}[1m])
+    )
     /
     sum by (service_namespace, service_name) (increase({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER"}[1m]))
   ) * 100 > $__threshold
@@ -29,9 +40,9 @@ annotations:
   summary: '{{ $labels.service_name }}: {{ $value | printf "%.1f" }}% of requests returned a 5xx in the last minute'
   description: >-
     More than 10% of discovery-api's server requests returned a 5xx over one minute, with at least 100 requests.
-    Attendees' searches and "where should I go next?" answers are failing. A 503 with code
-    DISCOVERY_CAPACITY_EXHAUSTED means the per-pod admission control is full (capacity); other 5xx point to
-    Elasticsearch, OpenAI or the service itself. While it is armed, the Agent0 automation "ConferenceOps: fix
-    discovery capacity" investigates and may open an incident pull request that changes only the discovery
-    replicas or resources (OPS-1). Never raise this threshold to make the check pass.
+    Attendees' searches and "where should I go next?" answers are failing. A 503 whose server span carries
+    conferenceops.error.code DISCOVERY_CAPACITY_EXHAUSTED means the pod's admission control was full (capacity);
+    other 5xx point to Elasticsearch, OpenAI or the service itself. While it is armed, the Agent0 automation
+    "ConferenceOps: fix discovery capacity" investigates and may open an incident pull request that changes only the
+    discovery replicas or resources (OPS-1). Never raise this threshold to make the check pass.
 enabled: true

@@ -53,6 +53,10 @@ spec:
           command: [{{ $c.command | quote }}]
           env:
             {{- include "co.env" $ | nindent 12 }}
+            {{- if hasKey $c "maxInflight" }}
+            - name: DISCOVERY_MAX_INFLIGHT
+              value: {{ $c.maxInflight | quote }}
+            {{- end }}
           {{- if ne $name "worker" }}
           ports:
             - {name: http, containerPort: 8080}

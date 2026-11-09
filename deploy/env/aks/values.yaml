@@ -9,6 +9,9 @@ public:
 components:
   discovery:
     replicas: 1
+    # The per-pod admission limit, set from one pod's measured capacity (ops/load/README.md). It stays the same
+    # through an incident: an incident PR never changes it (OPS-1).
+    maxInflight: 8
     resources:
       requests: {cpu: 250m, memory: 256Mi}
       limits: {memory: 512Mi}
