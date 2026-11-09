@@ -1,4 +1,11 @@
-import { Component, computed, inject } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterRenderEffect,
+  computed,
+  inject,
+  viewChild,
+} from '@angular/core';
 
 import { AgendaService } from '../agenda-state';
 import { Icon } from '../icons';
@@ -61,7 +68,7 @@ import { SessionCard, SessionSummary } from '../session-card';
         @case ('done') {
           @if (agenda(); as a) {
             <section class="group" aria-labelledby="bookmarked-heading">
-              <h2 id="bookmarked-heading">
+              <h2 id="bookmarked-heading" tabindex="-1" #bookmarkedHeading>
                 Bookmarked <span class="count">{{ a.bookmarked.length }}</span>
               </h2>
               @if (a.bookmarked.length === 0) {
@@ -117,25 +124,42 @@ import { SessionCard, SessionSummary } from '../session-card';
 })
 export class AgendaPage {
   protected readonly personas = inject(PersonaService);
-  private readonly shared = inject(AgendaService);
+  protected readonly shared = inject(AgendaService);
+  private readonly bookmarkedHeading = viewChild<ElementRef<HTMLElement>>('bookmarkedHeading');
 
   /** One load per persona, shared with the quick-add buttons on every card (AgendaService). */
   protected readonly status = this.shared.status;
   protected readonly agenda = this.shared.agenda;
 
   protected readonly announcement = computed(() => {
-    const a = this.agenda();
-    switch (this.status()) {
-      case 'loading':
-        return 'Loading the agenda…';
-      case 'done':
-        return a
-          ? `Agenda for ${a.displayName}: ${a.bookmarked.length} bookmarked, ${a.attended.length} attended.`
-          : '';
-      default:
-        return '';
+    const status = this.status();
+    if (status === 'loading') {
+      return 'Loading the agenda…';
     }
+    const change = this.shared.announcement();
+    if (change) {
+      return change;
+    }
+    if (status === 'done') {
+      const a = this.agenda();
+      return a
+        ? `Agenda for ${a.displayName}: ${a.bookmarked.length} bookmarked, ${a.attended.length} attended.`
+        : '';
+    }
+    return '';
   });
+
+  constructor() {
+    // When a removal destroys the focused card, focus moves to the Bookmarked heading instead of falling to the
+    // body, and the page-level status line above announces the change (A11Y-1).
+    afterRenderEffect(() => {
+      this.agenda();
+      const heading = this.bookmarkedHeading()?.nativeElement;
+      if (heading && typeof document !== 'undefined' && document.activeElement === document.body) {
+        heading.focus();
+      }
+    });
+  }
 
   protected load(): void {
     this.shared.refresh();

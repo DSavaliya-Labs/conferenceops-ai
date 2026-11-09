@@ -106,6 +106,27 @@ describe('Quick add to My Agenda', () => {
     expect(text(status())).toContain(`Removed “${TALK.title}” from My Agenda.`);
   });
 
+  it('keeps the last agenda and optimistic state when a successful write re-read fails', () => {
+    const { fixture, http, button, status, agenda } = setUp([TALK.id]);
+    button().click();
+    fixture.detectChanges();
+    http.expectOne(`${AGENDA_URL}/${TALK.id}`).flush(null, {
+      status: 204,
+      statusText: 'No Content',
+    });
+    fixture.detectChanges();
+
+    http
+      .expectOne(AGENDA_URL)
+      .flush('down', { status: 503, statusText: 'Service Unavailable' });
+    fixture.detectChanges();
+
+    expect(agenda.status()).toBe('done');
+    expect(agenda.agenda()?.bookmarked.map((entry) => entry.sessionId)).toEqual([TALK.id]);
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+    expect(text(status())).toContain(`Removed “${TALK.title}” from My Agenda.`);
+  });
+
   it('rolls the button back and says so when the server refuses', () => {
     const { fixture, http, button, status } = setUp();
     button().click();
@@ -184,5 +205,74 @@ describe('Quick add to My Agenda', () => {
     });
     fixture.detectChanges();
     expect(button().getAttribute('aria-pressed')).toBe('false'); // Tomás's agenda, not Aisha's write
+  });
+
+  it("keeps a second card's in-flight state when the first card's re-read lands", () => {
+    const { fixture, http, buttons } = setUp();
+    buttons()[0].click();
+    fixture.detectChanges();
+    buttons()[1].click();
+    fixture.detectChanges();
+    const [first, second] = http.match((req) => req.method === 'PUT');
+    first.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    // The first card's re-read returns before the second write finishes: the second card must stay pressed.
+    http.expectOne(AGENDA_URL).flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: [{ sessionId: TALK.id }],
+      attended: [],
+    });
+    fixture.detectChanges();
+    expect(buttons()[1].getAttribute('aria-pressed')).toBe('true');
+    expect(buttons()[1].disabled).toBe(true);
+    second.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    http.expectOne(AGENDA_URL).flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: [{ sessionId: TALK.id }, { sessionId: OTHER.id }],
+      attended: [],
+    });
+    fixture.detectChanges();
+    expect(Array.from(buttons()).map((b) => b.getAttribute('aria-pressed'))).toEqual([
+      'true',
+      'true',
+    ]);
+  });
+
+  it('shows nothing optimistic from the last persona while the new one loads', () => {
+    const { fixture, http, button } = setUp();
+    button().click();
+    fixture.detectChanges();
+    const write = http.expectOne(`${AGENDA_URL}/${TALK.id}`);
+    const personas = TestBed.inject(PersonaService);
+    personas.personas.set([AISHA, TOMAS]);
+    personas.select(TOMAS.id);
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('false'); // Aisha's pending add isn't Tomás's
+    write.flush(null, { status: 204, statusText: 'No Content' });
+    http
+      .expectOne(AGENDA_URL)
+      .flush({ profileId: TOMAS.id, displayName: TOMAS.displayName, bookmarked: [], attended: [] });
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('keeps the confirmed write and the list when the background re-read fails', () => {
+    const { fixture, http, button, agenda } = setUp();
+    button().click();
+    fixture.detectChanges();
+    http
+      .expectOne(`${AGENDA_URL}/${TALK.id}`)
+      .flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    http
+      .expectOne(AGENDA_URL)
+      .flush({ detail: 'down' }, { status: 503, statusText: 'Service Unavailable' });
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('true'); // the write happened
+    expect(agenda.status()).toBe('done'); // the list on screen stays, no error callout
+    expect(agenda.agenda()).not.toBeNull();
   });
 });

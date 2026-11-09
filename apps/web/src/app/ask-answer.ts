@@ -1,4 +1,6 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
+
+import { ReadAloudButton } from './read-aloud';
 import { RouterLink } from '@angular/router';
 import { Subscription } from 'rxjs';
 
@@ -12,7 +14,7 @@ type Status = 'idle' | 'loading' | 'done' | 'error';
  *  passages only, or nobody, when the best-matching passage is quoted instead (AI-1). */
 @Component({
   selector: 'app-ask-answer',
-  imports: [RouterLink],
+  imports: [RouterLink, ReadAloudButton],
   templateUrl: './ask-answer.html',
   styleUrl: './ask-answer.css',
 })
@@ -28,6 +30,20 @@ export class AskAnswer {
   protected readonly clock = clock;
 
   protected readonly citations = computed<AskCitation[]>(() => this.response()?.citations ?? []);
+
+  /** What "Read aloud" says: the answer, then each cited moment (talk, speaker, where in the replay). */
+  protected readonly speech = computed(() => {
+    const r = this.response();
+    if (!r) {
+      return '';
+    }
+    const cites = this.citations().map(
+      (c) => `${c.sessionTitle}, ${c.speaker}, ${this.range(c)}: ${c.excerpt}`,
+    );
+    return [r.answer, cites.length ? `Cited moments: ${cites.join('. ')}` : '']
+      .filter(Boolean)
+      .join('. ');
+  });
 
   protected readonly sourceLabel = computed(() => {
     const response = this.response();

@@ -330,10 +330,13 @@ class PostgresPortalData:
             return "done"
 
     def unbookmark(self, profile_id: uuid.UUID, session_id: uuid.UUID) -> BookmarkResult:
-        """Removes the session from the persona's agenda; removing what isn't there is still done."""
+        """Removes the session from the persona's agenda; removing a bookmark that isn't there is still done, but an
+        unknown talk is 404 like it is for a bookmark."""
         with transaction() as db:
             if not self._selectable(db, profile_id):
                 return "no_profile"
+            if db.scalars(select(Session.id).where(Session.id == session_id)).first() is None:
+                return "no_session"
             db.execute(
                 delete(AgendaItem).where(AgendaItem.profile_id == profile_id, AgendaItem.session_id == session_id)
             )
@@ -433,10 +436,9 @@ _BOOKMARK_RESPONSES = {
 
 
 def _bookmark_outcome(result: BookmarkResult) -> None:
-    if result == "no_profile":
-        raise HTTPException(status_code=404, detail="Profile not found")
-    if result == "no_session":
-        raise HTTPException(status_code=404, detail="Session not found")
+    if result != "done":
+        # AUTHZ-1: one body for both cases, so the answer never says whether the persona or the talk was missing.
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 @router.put(

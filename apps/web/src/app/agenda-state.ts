@@ -59,10 +59,12 @@ export class AgendaService {
   refresh(id: string = this.personas.selectedId(), keep = false): void {
     this.request?.unsubscribe();
     if (!keep) {
+      // A new persona (or a retry): nothing optimistic or announced from before applies to her.
       this.agenda.set(null);
+      this.pending.set(new Map());
+      this.announcement.set('');
     }
     if (!id) {
-      this.pending.set(new Map());
       this.status.set('none');
       return;
     }
@@ -72,10 +74,16 @@ export class AgendaService {
     this.request = this.portal.agenda(id).subscribe({
       next: (agenda) => {
         this.agenda.set(agenda);
-        this.pending.set(new Map());
+        // Keep the optimistic state of writes still in flight; the server's list covers the rest.
+        this.pending.update((m) => new Map([...m].filter(([id]) => this.busy().has(id))));
         this.status.set('done');
       },
       error: (error: unknown) => {
+        if (keep) {
+          // A background re-read after a confirmed write: the write happened, so the card stays as it is and the
+          // list on screen stays; the next load or write re-reads again.
+          return;
+        }
         this.agenda.set(null);
         this.pending.set(new Map());
         this.status.set(

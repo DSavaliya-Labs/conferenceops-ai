@@ -1,3 +1,4 @@
+import { PERSONA_STORAGE_KEY } from './personas';
 import {
   AISHA,
   PERSONAS,
@@ -30,6 +31,9 @@ async function start(): Promise<AppView> {
 }
 
 describe('Persona menu', () => {
+  beforeEach(() => localStorage.removeItem(PERSONA_STORAGE_KEY));
+  afterEach(() => localStorage.removeItem(PERSONA_STORAGE_KEY));
+
   it('is a menu button that says it is a fictional demo persona, closed by default', async () => {
     const view = await start();
     const button = trigger(view);
@@ -94,7 +98,7 @@ describe('Persona menu', () => {
     await settle(view);
     expect(menu(view)).toBeNull();
     expect(button.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(button);
+    expect(document.activeElement).toBe(trigger(view));
   });
 
   it('picking a persona closes the menu, returns focus, shows her on the button, and later calls carry her ID', async () => {
