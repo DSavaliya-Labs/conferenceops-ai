@@ -1,0 +1,43 @@
+name: build-log
+
+# One entry per closed pull request in the "Build log" issue, merged or not (scripts/build-log.sh).
+# Dispatch it with PR numbers to log a closed PR it missed.
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      prs:
+        description: PR numbers to log, separated by spaces
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: build-log
+  cancel-in-progress: false
+
+jobs:
+  log:
+    name: build-log
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+      checks: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Log the closed pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PRS: ${{ github.event_name == 'workflow_dispatch' && inputs.prs || github.event.pull_request.number }}
+        run: |
+          read -r -a prs <<<"$PRS"
+          ./scripts/build-log.sh "${prs[@]}"

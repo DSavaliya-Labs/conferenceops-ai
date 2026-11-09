@@ -1,0 +1,93 @@
+name: ci
+
+# The eight required checks. Every job always runs, so branch protection never waits for a check that a path filter
+# skipped. A job whose code doesn't exist yet passes as "not applicable"; the pull request that adds the code also
+# makes the job real.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Lint workflows (actionlint)
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
+      - name: Lint shell scripts (shellcheck)
+        run: |
+          mapfile -t scripts < <(git ls-files '*.sh')
+          if ((${#scripts[@]})); then shellcheck "${scripts[@]}"; else echo "No shell scripts."; fi
+
+  domain-tests:
+    name: domain-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - run: echo "::notice title=Not applicable yet::No backend yet. The services PR makes this check real."
+
+  data-integration:
+    name: data-integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: echo "::notice title=Not applicable yet::No data layer yet. The data model PR makes this check real."
+
+  api-contract:
+    name: api-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo "::notice title=Not applicable yet::No API contract yet. The search PR makes this check real."
+
+  ui-smoke-accessibility:
+    name: ui-smoke-accessibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: echo "::notice title=Not applicable yet::No web app yet. The app shell PR makes this check real."
+
+  helm-policy:
+    name: helm-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - run: echo "::notice title=Not applicable yet::No Helm chart yet. The deploy PR makes this check real."
+
+  incident-scope:
+    name: incident-scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Incident PRs change only the allowed fields (OPS-1)
+        env:
+          IS_INCIDENT: ${{ github.event_name == 'pull_request' && (contains(github.event.pull_request.labels.*.name, 'incident') || github.event.pull_request.user.login == 'dash0-app[bot]') }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/check-incident-scope.sh
+
+  build-images:
+    name: build-images
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - run: echo "::notice title=Not applicable yet::No container images yet. The services PR makes this check real."
