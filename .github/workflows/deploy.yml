@@ -84,9 +84,12 @@ jobs:
         run: |
           helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
           helm dependency build deploy/chart
+          # Server-side apply, and the chart wins conflicts on the fields it declares. The ECK operator writes the
+          # whole Elasticsearch object back with an update (it adds an empty podTemplate.metadata), which makes it the
+          # owner of .spec.nodeSets. Without --force-conflicts, every upgrade after the first fails on that field.
           helm upgrade --install "$RELEASE" deploy/chart --namespace "$NAMESPACE" --reset-values \
             -f deploy/env/aks/values.yaml --set image.repository="$IMAGE" --set image.tag="$TAG" \
-            --wait --timeout 20m
+            --server-side=true --force-conflicts --wait --timeout 20m
 
       - name: The public URL answers
         run: |

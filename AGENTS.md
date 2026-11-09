@@ -39,13 +39,15 @@ and shows a platform run by an AI operations team.
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
 | `contracts/` | Committed OpenAPI schema and the generated Angular client |
-| `seed/` | The CloudBridge Summit fixture and its media and caption files |
+| `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it |
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
+| `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
 | `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh` |
 | `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
+| `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
 
 When you add a module, a route or a top-level directory, add it here in the same pull request.
 
@@ -78,7 +80,7 @@ Review findings cite these IDs.
   ingest-only Dash0 token.
 - **K8S-1, workloads.** Run as non-root, with no privilege escalation, dropped capabilities and a read-only root
   filesystem. Set requests and a memory limit. Probes don't depend on downstream services. Pin versions, and pass
-  `--reset-values` to `helm upgrade`.
+  `--reset-values --server-side=true --force-conflicts` to `helm upgrade`.
 - **OPS-1, incident scope.** An incident pull request changes only the discovery workload's replicas or resources
   in `deploy/env/aks/values.yaml`. It never changes review policy, CI gates, the load rate or acceptance thresholds.
 - **TEST-1, tests.** A behavior change comes with tests that prove it. A bug fix comes with a regression test that
@@ -116,6 +118,15 @@ helm dependency build deploy/chart && helm template conferenceops deploy/chart -
 
 The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com. Every merge to `main` deploys there
 (`deploy.yml`), and each deploy is marked in Dash0 as a `dash0.deployment` event.
+
+## Web app commands
+
+```bash
+cd apps/web && npm ci
+npx ng test --watch=false   # unit and accessibility tests (Vitest)
+npx ng build                # production build into dist/web/browser
+docker build -t conferenceops-web apps/web   # nginx (unprivileged, :8080) serving the app, /config.json and the /api proxy
+```
 
 ## Never
 

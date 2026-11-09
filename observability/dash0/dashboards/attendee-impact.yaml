@@ -1,0 +1,468 @@
+# What attendees feel: discovery and core API health, the browser, and the Kubernetes capacity behind them.
+# Sources: Dash0's span metrics (dash0.spans, dash0.spans.duration), its browser metrics (dash0.web.*), and the
+# collector's Kubernetes cluster metrics (k8s.deployment.*, k8s.container.restarts). README.md says where each
+# label name was checked.
+apiVersion: dash0.com/v1alpha1
+kind: Dashboard
+metadata:
+  name: conferenceops-attendee-impact
+  dash0Extensions:
+    id: 68b15ef1-0cfa-4d49-857a-a92b9d2d3f89
+spec:
+  display:
+    name: "ConferenceOps: attendee impact"
+    description: >-
+      Discovery and core API health, browser experience and Kubernetes capacity for ConferenceOps AI
+      (dataset conferenceops). Managed as code in DSavaliya-Labs/conferenceops-ai, observability/dash0/.
+  duration: 30m
+  layouts:
+    - kind: Grid
+      spec:
+        display:
+          title: Discovery (search and "where should I go next?")
+          collapse:
+            open: true
+        items:
+          - {x: 0, "y": 0, width: 24, height: 4, content: {$ref: "#/spec/panels/about"}}
+          - {x: 0, "y": 4, width: 12, height: 7, content: {$ref: "#/spec/panels/discoveryRequests"}}
+          - {x: 12, "y": 4, width: 12, height: 7, content: {$ref: "#/spec/panels/discoveryErrorShare"}}
+          - {x: 0, "y": 11, width: 12, height: 7, content: {$ref: "#/spec/panels/searchLatency"}}
+          - {x: 12, "y": 11, width: 12, height: 7, content: {$ref: "#/spec/panels/discoveryPerPod"}}
+          - {x: 0, "y": 18, width: 12, height: 7, content: {$ref: "#/spec/panels/elasticsearchLatency"}}
+          - {x: 12, "y": 18, width: 12, height: 7, content: {$ref: "#/spec/panels/elasticsearchCalls"}}
+    - kind: Grid
+      spec:
+        display:
+          title: Core API (profiles, agenda, sessions)
+          collapse:
+            open: true
+        items:
+          - {x: 0, "y": 0, width: 12, height: 7, content: {$ref: "#/spec/panels/coreRequests"}}
+          - {x: 12, "y": 0, width: 12, height: 7, content: {$ref: "#/spec/panels/coreErrorShare"}}
+    - kind: Grid
+      spec:
+        display:
+          title: Browser (service web)
+          collapse:
+            open: true
+        items:
+          - {x: 0, "y": 0, width: 8, height: 7, content: {$ref: "#/spec/panels/pageViews"}}
+          - {x: 8, "y": 0, width: 8, height: 7, content: {$ref: "#/spec/panels/webVitalsTiming"}}
+          - {x: 16, "y": 0, width: 8, height: 7, content: {$ref: "#/spec/panels/webVitalsCls"}}
+    - kind: Grid
+      spec:
+        display:
+          title: Kubernetes (namespace conferenceops)
+          collapse:
+            open: true
+        items:
+          - {x: 0, "y": 0, width: 12, height: 7, content: {$ref: "#/spec/panels/replicas"}}
+          - {x: 12, "y": 0, width: 12, height: 7, content: {$ref: "#/spec/panels/restarts"}}
+  panels:
+    about:
+      kind: Panel
+      spec:
+        display:
+          name: How to read this dashboard
+        plugin:
+          kind: Markdown
+          spec:
+            text: |-
+              A **503** from discovery-api means its per-pod admission control is full (code
+              `DISCOVERY_CAPACITY_EXHAUSTED`) or a search failed upstream (Elasticsearch, OpenAI).
+              **Discovery is rejecting searches** fails above a 10% 5xx share over one minute with at least 100
+              requests, and starts the Agent0 automation *ConferenceOps: fix discovery capacity* while it is armed.
+              **Search is slow** is degraded when the p95 of POST /api/v1/search stays above 1.5 s for 2 minutes.
+
+    discoveryRequests:
+      kind: Panel
+      spec:
+        display:
+          name: Discovery requests by status
+          description: discovery-api server requests per second, by HTTP status code.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: requests/sec, decimalPlaces: 1}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum by (http_response_status_code) (rate({otel_metric_name="dash0.spans",
+                    service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER"}[$__rate_interval]))
+                  seriesNameFormat: 'HTTP {{http_response_status_code}}'
+
+    discoveryErrorShare:
+      kind: Panel
+      spec:
+        display:
+          name: Discovery 5xx share
+          description: >-
+            Share of discovery-api requests that returned a 5xx, and 503 alone (capacity or upstream). The check
+            "Discovery is rejecting searches" fails above 10%.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: percent-decimal, decimalPlaces: 1}}
+            thresholds:
+              steps:
+                - {color: "#e33238", value: 0.1}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    (sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api",
+                    otel_span_kind="SERVER", http_response_status_code=~"5.."}[$__rate_interval]))
+                    or sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api",
+                    otel_span_kind="SERVER"}[$__rate_interval])) * 0)
+                    / sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api",
+                    otel_span_kind="SERVER"}[$__rate_interval]))
+                  seriesNameFormat: All 5xx
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    (sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api",
+                    otel_span_kind="SERVER", http_response_status_code="503"}[$__rate_interval]))
+                    or sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api",
+                    otel_span_kind="SERVER"}[$__rate_interval])) * 0)
+                    / sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="discovery-api",
+                    otel_span_kind="SERVER"}[$__rate_interval]))
+                  seriesNameFormat: "503"
+
+    searchLatency:
+      kind: Panel
+      spec:
+        display:
+          name: Search latency (POST /api/v1/search)
+          description: >-
+            Median and 95th percentile of POST /api/v1/search on discovery-api. The check "Search is slow" is
+            degraded when the p95 stays above 1.5 s for 2 minutes.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: seconds, decimalPlaces: 2}}
+            thresholds:
+              steps:
+                - {color: "#edca1d", value: 1.5}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.95, sum(rate({otel_metric_name="dash0.spans.duration",
+                    service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER",
+                    http_route="/api/v1/search", http_request_method="POST"}[$__rate_interval])))
+                  seriesNameFormat: p95
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.5, sum(rate({otel_metric_name="dash0.spans.duration",
+                    service_namespace="conferenceops", service_name="discovery-api", otel_span_kind="SERVER",
+                    http_route="/api/v1/search", http_request_method="POST"}[$__rate_interval])))
+                  seriesNameFormat: p50
+
+    discoveryPerPod:
+      kind: Panel
+      spec:
+        display:
+          name: Discovery traffic per pod
+          description: >-
+            Requests per second that each discovery-api pod served, and its 503s. After a scale-out, every pod
+            should carry traffic before a recovery counts.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: requests/sec, decimalPlaces: 1}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum by (k8s_pod_name) (rate({otel_metric_name="dash0.spans", service_namespace="conferenceops",
+                    service_name="discovery-api", otel_span_kind="SERVER"}[$__rate_interval]))
+                  seriesNameFormat: '{{k8s_pod_name}} all'
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum by (k8s_pod_name) (rate({otel_metric_name="dash0.spans", service_namespace="conferenceops",
+                    service_name="discovery-api", otel_span_kind="SERVER", http_response_status_code="503"}[$__rate_interval]))
+                  seriesNameFormat: '{{k8s_pod_name}} 503'
+
+    elasticsearchLatency:
+      kind: Panel
+      spec:
+        display:
+          name: Elasticsearch call latency (from discovery-api)
+          description: Median and 95th percentile of the Elasticsearch client calls discovery-api makes.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: seconds, decimalPlaces: 3}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.95, sum(rate({otel_metric_name="dash0.spans.duration",
+                    service_namespace="conferenceops", service_name="discovery-api",
+                    db_system_name="elasticsearch"}[$__rate_interval])))
+                  seriesNameFormat: p95
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.5, sum(rate({otel_metric_name="dash0.spans.duration",
+                    service_namespace="conferenceops", service_name="discovery-api",
+                    db_system_name="elasticsearch"}[$__rate_interval])))
+                  seriesNameFormat: p50
+
+    elasticsearchCalls:
+      kind: Panel
+      spec:
+        display:
+          name: Elasticsearch calls and failures (from discovery-api)
+          description: Elasticsearch client calls per second from discovery-api, and the ones that ended in an error.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: ops/sec, decimalPlaces: 1}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops",
+                    service_name="discovery-api", db_system_name="elasticsearch"}[$__rate_interval]))
+                  seriesNameFormat: All calls
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops",
+                    service_name="discovery-api", db_system_name="elasticsearch",
+                    otel_span_status_code="ERROR"}[$__rate_interval]))
+                  seriesNameFormat: Failed calls
+
+    coreRequests:
+      kind: Panel
+      spec:
+        display:
+          name: Core API requests by status
+          description: core-api server requests per second, by HTTP status code.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: requests/sec, decimalPlaces: 1}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum by (http_response_status_code) (rate({otel_metric_name="dash0.spans",
+                    service_namespace="conferenceops", service_name="core-api", otel_span_kind="SERVER"}[$__rate_interval]))
+                  seriesNameFormat: 'HTTP {{http_response_status_code}}'
+
+    coreErrorShare:
+      kind: Panel
+      spec:
+        display:
+          name: Core API 5xx share
+          description: Share of core-api requests that returned a 5xx.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: percent-decimal, decimalPlaces: 1}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    (sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="core-api",
+                    otel_span_kind="SERVER", http_response_status_code=~"5.."}[$__rate_interval]))
+                    or sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="core-api",
+                    otel_span_kind="SERVER"}[$__rate_interval])) * 0)
+                    / sum(rate({otel_metric_name="dash0.spans", service_namespace="conferenceops", service_name="core-api",
+                    otel_span_kind="SERVER"}[$__rate_interval]))
+                  seriesNameFormat: All 5xx
+
+    pageViews:
+      kind: Panel
+      spec:
+        display:
+          name: Page views and browser errors per minute
+          description: Page views and JavaScript errors the Dash0 Web SDK reported for service web.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: decimal, decimalPlaces: 1}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum(rate({otel_metric_name="dash0.web.page_views", service_namespace="conferenceops",
+                    service_name="web"}[$__rate_interval])) * 60
+                  seriesNameFormat: Page views
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    sum(rate({otel_metric_name="dash0.web.errors", service_namespace="conferenceops",
+                    service_name="web"}[$__rate_interval])) * 60
+                  seriesNameFormat: Errors
+
+    webVitalsTiming:
+      kind: Panel
+      spec:
+        display:
+          name: "Web vitals p75: LCP and INP"
+          description: >-
+            75th percentile of Largest Contentful Paint and Interaction to Next Paint for service web. Good is
+            below 2.5 s and 0.2 s.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: seconds, decimalPlaces: 2}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.75, sum(rate({otel_metric_name="dash0.web.vitals.lcp",
+                    service_namespace="conferenceops", service_name="web"}[$__rate_interval])))
+                  seriesNameFormat: LCP p75
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.75, sum(rate({otel_metric_name="dash0.web.vitals.inp",
+                    service_namespace="conferenceops", service_name="web"}[$__rate_interval])))
+                  seriesNameFormat: INP p75
+
+    webVitalsCls:
+      kind: Panel
+      spec:
+        display:
+          name: "Web vitals p75: CLS"
+          description: 75th percentile of Cumulative Layout Shift for service web. Good is below 0.1.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: decimal, decimalPlaces: 2}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    histogram_quantile(0.75, sum(rate({otel_metric_name="dash0.web.vitals.cls",
+                    service_namespace="conferenceops", service_name="web"}[$__rate_interval])))
+                  seriesNameFormat: CLS p75
+
+    replicas:
+      kind: Panel
+      spec:
+        display:
+          name: "Replicas: desired and available"
+          description: >-
+            Desired and available replicas of each Deployment in namespace conferenceops, from the collector's
+            Kubernetes cluster metrics. Available below desired means pods are not ready or not scheduled.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: decimal, decimalPlaces: 0}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    max by (k8s_deployment_name) ({otel_metric_name="k8s.deployment.desired",
+                    k8s_namespace_name="conferenceops"})
+                  seriesNameFormat: '{{k8s_deployment_name}} desired'
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    max by (k8s_deployment_name) ({otel_metric_name="k8s.deployment.available",
+                    k8s_namespace_name="conferenceops"})
+                  seriesNameFormat: '{{k8s_deployment_name}} available'
+
+    restarts:
+      kind: Panel
+      spec:
+        display:
+          name: Container restarts
+          description: >-
+            Restart count of each container in namespace conferenceops. A rising count points to crashes or
+            OOM kills, not to a lack of capacity.
+        plugin:
+          kind: TimeSeriesChart
+          spec:
+            legend: {mode: list, position: bottom}
+            yAxis: {show: true, min: 0, format: {unit: decimal, decimalPlaces: 0}}
+        queries:
+          - kind: TimeSeriesQuery
+            spec:
+              plugin:
+                kind: PrometheusTimeSeriesQuery
+                spec:
+                  query: >-
+                    max by (k8s_pod_name, k8s_container_name) ({otel_metric_name="k8s.container.restarts",
+                    k8s_namespace_name="conferenceops"})
+                  seriesNameFormat: '{{k8s_pod_name}}/{{k8s_container_name}}'

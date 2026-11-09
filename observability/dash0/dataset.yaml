@@ -1,0 +1,17 @@
+# The conferenceops dataset's processing settings. Only the keys below are managed here; Dash0 keeps every other
+# setting (retention, privacy, permissions) as it is.
+#
+# Semantic convention upgrades: the backend's FastAPI instrumentation emits the old HTTP attribute names by default
+# (http.status_code, http.method). With upgrades on, Dash0 renames them at ingestion to the stable names
+# (http.response.status_code, http.request.method) that the dashboard and check rules query on the server spans.
+# The Elasticsearch panels don't need it: the Elasticsearch client sets the stable db.system.name itself. v1.36.0 is
+# the version the default dataset already uses; the queries were checked against that dataset's data.
+apiVersion: dash0.com/v1alpha1
+kind: Dash0Dataset
+metadata:
+  name: ConferenceOps AI
+  labels:
+    dash0.com/id: conferenceops
+spec:
+  processing:
+    semanticConventionUpgrades: v1.36.0
