@@ -142,8 +142,9 @@ flowchart TB
   users -->|"telemetry"| check["A Dash0 check fails"]
   check --> agent0["Agent0 investigates and opens a fix PR"]
   agent0 --> pr
-  radar["Radar's AI SRE"] -->|"investigates the cluster"| aks
-  radar -->|"a fix through a PR"| pr
+  radar["Radar's AI SRE (read-only)"] -->|"investigates the cluster"| aks
+  radar -->|"its finding"| fixer["The builder with Claude Code, or Gitar"]
+  fixer -->|"fix PR"| pr
 ```
 
 - **Ship.** Gitar reviews each pull request while CI runs. It merges only with Gitar's approval and all 8 checks
@@ -151,8 +152,8 @@ flowchart TB
 - **Notice and fix.** Dash0 receives traces, metrics and logs from every service, plus browser monitoring. When a
   Dash0 check fails, an Agent0 automation investigates the telemetry and opens a fix pull request, which goes
   through the same review and checks.
-- **Investigate the cluster.** Radar's AI SRE investigation is read-only. A fix for what it finds goes through a
-  pull request, like everything else.
+- **Investigate the cluster.** Radar's AI SRE investigation is read-only. The builder turns what it finds into a fix
+  pull request with Claude Code (or asks Gitar to write it), and the fix goes through the same review and checks.
 
 ## How changes land
 
@@ -171,11 +172,12 @@ flowchart TB
     the rules in `AGENTS.md`, secrets, authentication or permission checks, the transcript publication boundary, how
     access facts are shown, or a migration that drops or rewrites data is high risk.
 - **Incident fixes stay small.** An incident pull request (labeled `incident`, or opened by Agent0) may change only
-  the discovery workload's replicas or resources in `deploy/env/aks/values.yaml`. The `incident-scope` check
-  enforces it.
+  the discovery workload's replicas or resources in `deploy/env/aks/values.yaml`. The `incident-scope` CI check
+  rejects changes to any other file and checks the first key on each changed line; Gitar's incident rule reviews
+  the values themselves, against the evidence in the description.
 - **The [Build log](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) records each one.** A workflow adds
-  one entry per closed pull request, merged or closed without merging: when and by whom, Gitar's verdict and risk,
-  and any CI failures on the way.
+  one entry per closed pull request, merged or closed without merging: when (and who merged it), Gitar's verdict and
+  risk, and any CI failures on the way.
 
 ## How this repository started
 

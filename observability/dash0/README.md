@@ -44,8 +44,8 @@ flowchart LR
 | Network | Trusted hosts only, which includes github.com for `git` and `gh` |
 | Tools | Dash0's default tool policy: query tools are allowed, write tools only for a matching Slack, GitHub or Linear trigger, and destructive tools need an opt-in. `git` and `gh` run in the sandbox |
 
-The repository enforces the same scope mechanically: the `incident-scope` CI job and Gitar's incident rule reject an
-incident PR that changes anything outside the discovery replicas and resources.
+The repository checks the same scope twice. The `incident-scope` CI job rejects an incident PR that changes any other
+file, and checks the first key on each changed line. Gitar's incident rule reviews the values themselves.
 
 ## Apply
 
