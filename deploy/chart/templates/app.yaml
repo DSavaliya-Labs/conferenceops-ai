@@ -70,6 +70,19 @@ spec:
           lifecycle:
             preStop:
               sleep: {seconds: 10}  # keep serving while the endpoint is removed, so rollouts don't 503
+          {{- else }}
+          # The worker serves no port. Each of its loops beats under /tmp (the emptyDir below) before its first
+          # iteration and after every one, promising the next beat within its wait plus a 5-minute budget for one
+          # iteration, and the probe reads only those files (K8S-1): see conferenceops/worker/liveness.py. A loop
+          # whose work hangs stops beating, and the container restarts about six minutes later. A loop whose work
+          # fails keeps beating: it is retried, and a restart wouldn't help it.
+          livenessProbe:
+            exec:
+              command: ["python", "-m", "conferenceops.worker.liveness"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
           {{- end }}
           securityContext:
             {{- include "co.containerSecurity" $ | nindent 12 }}

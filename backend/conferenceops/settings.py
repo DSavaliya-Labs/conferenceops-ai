@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     import_interval_seconds: float = 1800.0  # how often the worker re-imports the KubeCon feed
+    # Where the worker's loops write their heartbeat files and the liveness probe reads them (worker/liveness.py).
+    worker_heartbeat_dir: str = "/tmp/worker-heartbeat"  # noqa: S108 - the chart's emptyDir, private to the pod
     # discovery-api's admission control (admission.py): requests in progress per pod on its /api/v1 routes, set from
     # measured capacity (ops/load/README.md). At most 40, the worker threads that run its routes: above that, requests
     # would queue for a thread, which is the queueing admission control exists to prevent.
