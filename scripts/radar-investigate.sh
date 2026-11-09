@@ -28,7 +28,8 @@ def arr: if type == "array" then . else [] end;
 # Markdown for untrusted text: no HTML, no links or images, no mentions. A verdict posted from the builder's account
 # must not ping anyone or give Gitar a command ("@gitar-bot ..." anywhere, or "gitar ..." at the start of a line).
 def md: gsub("\\\\"; "\\\\") | gsub("&"; "&amp;") | gsub("<"; "&lt;") | gsub(">"; "&gt;")
-  | gsub("\\["; "\\[") | gsub("\\]"; "\\]") | gsub("@"; "＠");
+  | gsub("\\["; "\\[") | gsub("\\]"; "\\]") | gsub("@"; "＠")
+  | gsub("(?<s>[A-Za-z][A-Za-z0-9+.-]*)://"; "\(.s)[:]//") | gsub("(?i)www\\."; "www[.]");
 def quote: split("\n") | map("> " + .) | join("\n");
 def state:
   if .diagnosis.inconclusive == true then "inconclusive"
