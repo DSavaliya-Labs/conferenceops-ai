@@ -5,6 +5,8 @@ environment: aks
 public:
   enabled: true
   dnsLabel: conferenceops-ai
+  tls:
+    enabled: true  # self-signed; the browser warns once
 
 components:
   discovery:

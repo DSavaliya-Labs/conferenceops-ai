@@ -73,9 +73,9 @@ def public_problems(service, web_labels, ready_paths)
                 "to node, and new connections fail until its probe notices each move"
   end
   Array(service.dig("spec", "ports")).each do |port|
-    next if port["appProtocol"] == "http"
+    next if %w[http https].include?(port["appProtocol"])
     problems << "#{where} port #{port["name"] || port["port"]}: appProtocol is #{port["appProtocol"] || "unset"}, not " \
-                "http, so Azure ignores the probe path"
+                "http or https, so Azure ignores the probe path"
   end
   unless ready_paths.include?(probe)
     problems << "#{where}: Azure's probe path is #{probe || "unset"}, not the web pods' readiness path " \

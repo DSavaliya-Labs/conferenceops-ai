@@ -60,6 +60,9 @@ spec:
                 secretKeyRef: {name: {{ .Values.secretName }}, key: DASH0_BROWSER_TOKEN, optional: true}
           ports:
             - {name: http, containerPort: 8080}
+            {{- if .Values.public.tls.enabled }}
+            - {name: https, containerPort: 8443}
+            {{- end }}
           readinessProbe:
             httpGet: {path: /health/ready, port: http}
             periodSeconds: 5
@@ -79,9 +82,20 @@ spec:
           volumeMounts:
             - {name: conf, mountPath: /etc/nginx/conf.d}
             - {name: tmp, mountPath: /tmp}
+            {{- if .Values.public.tls.enabled }}
+            # The HTTPS server block joins the image's templates; the entrypoint renders it like the others.
+            - {name: tls-conf, mountPath: /etc/nginx/templates/tls.conf.template, subPath: tls.conf.template, readOnly: true}
+            - {name: tls, mountPath: /etc/nginx/tls, readOnly: true}
+            {{- end }}
       volumes:
         - {name: conf, emptyDir: {}}
         - {name: tmp, emptyDir: {}}
+        {{- if .Values.public.tls.enabled }}
+        - name: tls-conf
+          configMap: {name: {{ $fullname }}-web-tls}
+        - name: tls
+          secret: {secretName: {{ .Values.public.tls.secretName }}}
+        {{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -96,3 +110,6 @@ spec:
     app.kubernetes.io/component: web
   ports:
     - {name: http, port: 80, targetPort: http}
+    {{- if .Values.public.tls.enabled }}
+    - {name: https, port: 443, targetPort: https}
+    {{- end }}

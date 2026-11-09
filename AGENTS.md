@@ -128,7 +128,8 @@ helm template ... | scripts/check-chart-policy.sh       # what helm-policy check
 bash scripts/tests/check-chart-policy.test.sh           # that check's tests (helm and ruby)
 ```
 
-The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com, and it serves the web app: nginx serves the
+The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com (and https://, with a self-signed certificate
+the deploy creates once: accept the browser's warning; dictation needs that secure context), and it serves the web app: nginx serves the
 Angular app and `/config.json`, and proxies search, recommendations and Ask to discovery-api and every other `/api`
 route to core-api. Every merge to `main` builds both images, deploys them there (`deploy.yml`), checks that the URL
 serves the app, its config with the browser token (without it, browser monitoring is off) and a search, and marks the

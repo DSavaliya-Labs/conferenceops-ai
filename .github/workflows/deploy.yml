@@ -83,6 +83,16 @@ jobs:
             --from-literal=DASH0_INGEST_TOKEN="$DASH0_INGEST_TOKEN" \
             --from-literal=DASH0_BROWSER_TOKEN="$DASH0_BROWSER_TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+          if ! kubectl -n "$NAMESPACE" get secret conferenceops-web-tls >/dev/null 2>&1; then
+            # Self-signed for the public hostname: cloudapp.azure.com isn't a zone we own, so no managed certificate.
+            # The key never leaves the runner's temp dir and is deleted right after the Secret exists.
+            host="${PUBLIC_URL#http://}"
+            openssl req -x509 -newkey rsa:2048 -nodes -days 365 -keyout "$RUNNER_TEMP/tls.key" -out "$RUNNER_TEMP/tls.crt" \
+              -subj "/CN=$host" -addext "subjectAltName=DNS:$host" >/dev/null 2>&1
+            kubectl -n "$NAMESPACE" create secret tls conferenceops-web-tls \
+              --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key" >/dev/null
+            rm -f "$RUNNER_TEMP/tls.key" "$RUNNER_TEMP/tls.crt"
+          fi
           if ! kubectl -n "$NAMESPACE" get secret conferenceops-db >/dev/null 2>&1; then
             kubectl -n "$NAMESPACE" create secret generic conferenceops-db \
               --from-literal=password="$(openssl rand -hex 24)" >/dev/null
@@ -117,6 +127,14 @@ jobs:
             if ! config=$(curl -sf --max-time 10 "$PUBLIC_URL/config.json") \
               || ! jq -e '.dash0Dataset == "conferenceops"' <<<"$config" >/dev/null; then
               echo "/config.json: not the conferenceops dataset"; return 1
+            fi
+            # HTTPS with the self-signed certificate (-k: not from a public CA): the listener serves the same app.
+            local https="https://${PUBLIC_URL#http://}"
+            if ! curl -skf --max-time 10 "$https/health/ready" >/dev/null; then
+              echo "https /health/ready: not 200"; return 1
+            fi
+            if ! page=$(curl -skf --max-time 10 "$https/") || [[ $page != *"<app-root"* ]]; then
+              echo "https /: not the app"; return 1
             fi
             # Browser monitoring (B4) starts only with the ingest-only browser token. The Secrets step writes an empty
             # value when the aks environment has no DASH0_BROWSER_TOKEN secret, and the app then runs unmonitored.
