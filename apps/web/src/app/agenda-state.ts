@@ -59,10 +59,11 @@ export class AgendaService {
   refresh(id: string = this.personas.selectedId(), keep = false): void {
     this.request?.unsubscribe();
     if (!keep) {
+      // A new persona (or a retry): nothing optimistic from before applies to her.
       this.agenda.set(null);
+      this.pending.set(new Map());
     }
     if (!id) {
-      this.pending.set(new Map());
       this.status.set('none');
       return;
     }
@@ -72,7 +73,8 @@ export class AgendaService {
     this.request = this.portal.agenda(id).subscribe({
       next: (agenda) => {
         this.agenda.set(agenda);
-        this.pending.set(new Map());
+        // Keep the optimistic state of writes still in flight; the server's list covers the rest.
+        this.pending.update((m) => new Map([...m].filter(([id]) => this.busy().has(id))));
         this.status.set('done');
       },
       error: (error: unknown) => {

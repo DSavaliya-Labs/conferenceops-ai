@@ -151,6 +151,8 @@ class FakeData:
         self._check()
         if profile_id != AISHA_ID:
             return "no_profile"
+        if session_id != KNOWN_SESSION:
+            return "no_session"
         self.writes.append(("remove", profile_id, session_id))
         return "done"
 
@@ -342,12 +344,16 @@ def test_a_bookmark_is_added_and_removed_for_the_persona_in_the_header_and_nothi
     assert state["data"].writes == [("add", AISHA_ID, KNOWN_SESSION), ("remove", AISHA_ID, KNOWN_SESSION)]
 
 
-def test_bookmarking_an_unknown_session_or_as_an_unknown_persona_is_404(client):
+def test_an_unknown_session_or_an_unknown_persona_is_404_with_one_body_for_both(client):
     http, state = client
-    assert http.put(f"/api/v1/me/agenda/{uuid.uuid4()}", headers=AS_AISHA).status_code == 404
     other = {"X-Demo-Profile-ID": str(uuid.uuid4())}
-    assert http.put(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=other).status_code == 404
-    assert http.delete(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=other).status_code == 404
+    unknown_session = http.put(f"/api/v1/me/agenda/{uuid.uuid4()}", headers=AS_AISHA)
+    unknown_persona = http.put(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=other)
+    assert unknown_session.status_code == unknown_persona.status_code == 404
+    # AUTHZ-1: the body never says which of the two IDs exists.
+    assert unknown_session.json() == unknown_persona.json()
+    assert http.delete(f"/api/v1/me/agenda/{uuid.uuid4()}", headers=AS_AISHA).status_code == 404
+    assert http.delete(f"/api/v1/me/agenda/{KNOWN_SESSION}", headers=other).json() == unknown_session.json()
     assert state["data"].writes == []
 
 

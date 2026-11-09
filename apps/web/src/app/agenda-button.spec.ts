@@ -185,4 +185,56 @@ describe('Quick add to My Agenda', () => {
     fixture.detectChanges();
     expect(button().getAttribute('aria-pressed')).toBe('false'); // Tomás's agenda, not Aisha's write
   });
+
+  it("keeps a second card's in-flight state when the first card's re-read lands", () => {
+    const { fixture, http, buttons } = setUp();
+    buttons()[0].click();
+    fixture.detectChanges();
+    buttons()[1].click();
+    fixture.detectChanges();
+    const [first, second] = http.match((req) => req.method === 'PUT');
+    first.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    // The first card's re-read returns before the second write finishes: the second card must stay pressed.
+    http.expectOne(AGENDA_URL).flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: [{ sessionId: TALK.id }],
+      attended: [],
+    });
+    fixture.detectChanges();
+    expect(buttons()[1].getAttribute('aria-pressed')).toBe('true');
+    expect(buttons()[1].disabled).toBe(true);
+    second.flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    http.expectOne(AGENDA_URL).flush({
+      profileId: AISHA.id,
+      displayName: AISHA.displayName,
+      bookmarked: [{ sessionId: TALK.id }, { sessionId: OTHER.id }],
+      attended: [],
+    });
+    fixture.detectChanges();
+    expect(Array.from(buttons()).map((b) => b.getAttribute('aria-pressed'))).toEqual([
+      'true',
+      'true',
+    ]);
+  });
+
+  it('shows nothing optimistic from the last persona while the new one loads', () => {
+    const { fixture, http, button } = setUp();
+    button().click();
+    fixture.detectChanges();
+    const write = http.expectOne(`${AGENDA_URL}/${TALK.id}`);
+    const personas = TestBed.inject(PersonaService);
+    personas.personas.set([AISHA, TOMAS]);
+    personas.select(TOMAS.id);
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('false'); // Aisha's pending add isn't Tomás's
+    write.flush(null, { status: 204, statusText: 'No Content' });
+    http
+      .expectOne(AGENDA_URL)
+      .flush({ profileId: TOMAS.id, displayName: TOMAS.displayName, bookmarked: [], attended: [] });
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+  });
 });
