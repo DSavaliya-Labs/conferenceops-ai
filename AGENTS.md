@@ -42,10 +42,12 @@ and shows a platform run by an AI operations team.
 | `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it |
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
+| `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
 | `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean) |
 | `.github/workflows/` | CI (`ci.yml`), deploy, Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
+| `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
 
 When you add a module, a route or a top-level directory, add it here in the same pull request.
 
@@ -110,6 +112,15 @@ DATABASE_URL=postgresql+psycopg://... uv run alembic upgrade head   # apply migr
 DATABASE_URL=... uv run pytest -q -m integration                     # integration tests (real PostgreSQL)
 uv run core-api                               # or discovery-api, worker; listens on :8080
 docker build -t conferenceops-backend backend # one image; the Deployment picks the command
+```
+
+## Web app commands
+
+```bash
+cd apps/web && npm ci
+npx ng test --watch=false   # unit and accessibility tests (Vitest)
+npx ng build                # production build into dist/web/browser
+docker build -t conferenceops-web apps/web   # nginx (unprivileged, :8080) serving the app, /config.json and the /api proxy
 ```
 
 ## Never
