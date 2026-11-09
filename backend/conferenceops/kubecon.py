@@ -12,6 +12,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session as DbSession
 
 from conferenceops.catalog import SessionData, upsert_session
+from conferenceops.db import enqueue
 from conferenceops.models import (
     AccessFact,
     AccessFactKind,
@@ -20,6 +21,7 @@ from conferenceops.models import (
     EventKind,
     Level,
     Room,
+    Session,
     SessionSpeaker,
     Speaker,
 )
@@ -149,8 +151,14 @@ def _by_external(db: DbSession, model, conference_id: uuid.UUID) -> dict[str, ob
 
 
 def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
-    """Upsert the whole feed in the caller's transaction. Idempotent: unchanged sessions enqueue nothing."""
+    """Upsert the whole feed in the caller's transaction. Idempotent: unchanged sessions enqueue nothing.
+
+    A session the feed no longer lists is deleted, with a delete job for its search document (DATA-1). A feed with no
+    sessions is refused: it is a broken response, and importing it would delete the whole schedule, and with it every
+    agenda item that points at a session (ON DELETE CASCADE)."""
     parsed = parse_feed(feed)
+    if not parsed.sessions:
+        raise ValueError("the KubeCon feed has no sessions; refusing to delete the whole schedule")
     conf = _conference(db)
 
     rooms = _by_external(db, Room, conf.id)
@@ -165,7 +173,18 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
         if ext not in speakers:
             speakers[ext] = Speaker(conference_id=conf.id, external_id=ext, name=name)
             db.add(speakers[ext])
+        elif speakers[ext].name != name:
+            speakers[ext].name = name
     db.flush()
+
+    existing_sessions = _by_external(db, Session, conf.id)
+    feed_session_ids = {session.external_id for session in parsed.sessions}
+    removed = 0
+    for ext, row in existing_sessions.items():
+        if ext not in feed_session_ids:
+            enqueue(db, "session", row.id, row.revision + 1, kind="delete")
+            db.delete(row)
+            removed += 1
 
     changed = 0
     for s in parsed.sessions:
@@ -187,11 +206,14 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
             ),
         )
         changed += did_change
-        if did_change:
+        current_speaker_ids = {
+            link.speaker_id for link in db.scalars(select(SessionSpeaker).where(SessionSpeaker.session_id == row.id))
+        }
+        desired_speaker_ids = {speakers[ext].id for ext in s.speaker_external_ids if ext in speakers}
+        if current_speaker_ids != desired_speaker_ids:
             db.execute(delete(SessionSpeaker).where(SessionSpeaker.session_id == row.id))
-            for ext in s.speaker_external_ids:
-                if ext in speakers:
-                    db.add(SessionSpeaker(session_id=row.id, speaker_id=speakers[ext].id))
+            for speaker_id in desired_speaker_ids:
+                db.add(SessionSpeaker(session_id=row.id, speaker_id=speaker_id))
 
     db.execute(delete(AccessFact).where(AccessFact.conference_id == conf.id))
     for kind, text, location in ACCESS_FACTS:
@@ -205,4 +227,4 @@ def import_kubecon(db: DbSession, feed: dict) -> dict[str, int]:
                 read_on=ACCESS_READ_ON,
             )
         )
-    return {"sessions": len(parsed.sessions), "changed": changed, "rooms": len(parsed.rooms)}
+    return {"sessions": len(parsed.sessions), "changed": changed, "removed": removed, "rooms": len(parsed.rooms)}
