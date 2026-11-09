@@ -9,7 +9,7 @@ RUN npx ng build
 # Unprivileged nginx: runs as a non-root user and listens on 8080 (K8S-1).
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY --from=build /app/dist/web/browser /usr/share/nginx/html
-COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
+COPY nginx/ /etc/nginx/templates/
 # nginx resolves the API names per request, with the resolver from /etc/resolv.conf (the cluster DNS on AKS), so it
 # starts before the APIs exist. nginx ignores resolv.conf search domains, so the names are fully qualified.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \

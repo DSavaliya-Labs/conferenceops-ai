@@ -134,7 +134,7 @@ test_probe_without_app_protocol() {  # regression: Azure then ignores the probe 
   begin no-app-protocol
   edit 'doc("Service", "conferenceops-public")["spec"]["ports"][0].delete("appProtocol")'
   run
-  broken "Service/conferenceops-public port http: appProtocol is unset, not http, so Azure ignores the probe path"
+  broken "Service/conferenceops-public port http: appProtocol is unset, not http or https, so Azure ignores the probe path"
 }
 
 test_probe_path_not_readiness() {  # a probe through the proxy would make the load balancer wait on core-api
