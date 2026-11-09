@@ -103,6 +103,9 @@ class _Scalars:
         assert len(self.rows) <= 1
         return self.rows[0] if self.rows else None
 
+    def scalar_one_or_none(self):
+        return self.one_or_none()
+
     def __iter__(self):
         return iter(self.rows)
 
@@ -125,6 +128,8 @@ class _ImportDb:
             Session: self.sessions,
             SessionSpeaker: self.session_speakers,
         }[entity]
+        for criterion in statement._where_criteria:
+            rows = [row for row in rows if getattr(row, criterion.left.key) == criterion.right.value]
         return _Scalars(rows)
 
     def add(self, row):
@@ -136,6 +141,8 @@ class _ImportDb:
             self.speakers.append(row)
         elif isinstance(row, Room):
             self.rooms.append(row)
+        elif isinstance(row, Session):
+            self.sessions.append(row)
 
     def delete(self, row):
         self.sessions.remove(row)
@@ -143,9 +150,12 @@ class _ImportDb:
     def execute(self, statement):
         if statement.table.name == "session_speakers":
             self.session_speakers.clear()
+        return _Scalars([])
 
     def flush(self):
-        pass
+        for session in self.sessions:
+            if session.id is None:
+                session.id = uuid.uuid4()
 
 
 def _import_session(conference_id, room_id):
