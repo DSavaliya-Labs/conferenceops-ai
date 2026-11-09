@@ -83,14 +83,16 @@ jobs:
             --from-literal=DASH0_INGEST_TOKEN="$DASH0_INGEST_TOKEN" \
             --from-literal=DASH0_BROWSER_TOKEN="$DASH0_BROWSER_TOKEN" \
             --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-          if ! kubectl -n "$NAMESPACE" get secret conferenceops-web-tls >/dev/null 2>&1; then
+          if ! kubectl -n "$NAMESPACE" get secret conferenceops-web-tls -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+              | base64 -d | openssl x509 -noout -checkend $((30*24*3600)) >/dev/null 2>&1; then
             # Self-signed for the public hostname: cloudapp.azure.com isn't a zone we own, so no managed certificate.
             # The key never leaves the runner's temp dir and is deleted right after the Secret exists.
             host="${PUBLIC_URL#http://}"
             openssl req -x509 -newkey rsa:2048 -nodes -days 365 -keyout "$RUNNER_TEMP/tls.key" -out "$RUNNER_TEMP/tls.crt" \
               -subj "/CN=$host" -addext "subjectAltName=DNS:$host" >/dev/null 2>&1
             kubectl -n "$NAMESPACE" create secret tls conferenceops-web-tls \
-              --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key" >/dev/null
+              --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key" --dry-run=client -o yaml \
+              | kubectl apply -f - >/dev/null
             rm -f "$RUNNER_TEMP/tls.key" "$RUNNER_TEMP/tls.crt"
           fi
           if ! kubectl -n "$NAMESPACE" get secret conferenceops-db >/dev/null 2>&1; then
