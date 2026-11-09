@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     elasticsearch_password: str | None = None
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
+    openai_transcribe_model: str = "gpt-transcribe"  # dictation.py; whisper-1 and gpt-4o-transcribe are deprecated
     import_interval_seconds: float = 1800.0  # how often the worker re-imports the KubeCon feed
     log_level: str = "INFO"
     host: str = "0.0.0.0"  # noqa: S104 - containers listen on all interfaces; the Kubernetes Service limits exposure

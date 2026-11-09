@@ -1,16 +1,19 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 
+import { DictationButton } from './dictation-button';
 import { SearchResult, SearchService } from './search';
 
 type Status = 'idle' | 'searching' | 'done' | 'error';
 
 @Component({
   selector: 'app-root',
+  imports: [DictationButton],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
 export class App {
   private readonly searchService = inject(SearchService);
+  private readonly askInput = viewChild.required<ElementRef<HTMLInputElement>>('askInput');
 
   protected readonly query = signal('');
   protected readonly status = signal<Status>('idle');
@@ -34,6 +37,14 @@ export class App {
   protected onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
     this.validation.set('');
+  }
+
+  /** Dictated text lands in the Ask bar for review: focus moves there, and nothing is searched until the attendee
+   *  presses Search (PLAN §9.2). */
+  protected onDictated(text: string): void {
+    this.query.set(text);
+    this.validation.set('');
+    this.askInput().nativeElement.focus();
   }
 
   protected submit(event: Event): void {

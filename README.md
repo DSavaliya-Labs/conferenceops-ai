@@ -49,6 +49,11 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   desks.
 - **Real speakers' words stay theirs.** No transcript, quote or live text is ever generated for a real KubeCon
   speaker.
+- **Spoken questions.** The microphone next to the Ask bar records up to 60 seconds; `core-api` sends the recording
+  to OpenAI's `gpt-transcribe` and the text lands in the Ask bar for review. Nothing is searched until you press
+  Search. A denied microphone or a failed transcription says so, and typing keeps working. The audio is never stored,
+  and neither it nor the text reaches logs or telemetry. Browsers allow the microphone only on HTTPS or `localhost`,
+  and the public URL is plain HTTP today, so dictation works on a local or port-forwarded instance.
 - **An AI operations team.** Dash0 watches what attendees experience. When a check fails, Agent0 investigates and
   opens a fix pull request, Gitar reviews it, and GitHub Actions deploys it to AKS once it merges. Radar's AI SRE
   investigates the cluster. See [the operations loop](#the-operations-loop).

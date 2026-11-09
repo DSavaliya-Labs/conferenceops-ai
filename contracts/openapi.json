@@ -1,6 +1,20 @@
 {
   "components": {
     "schemas": {
+      "DictationResponse": {
+        "properties": {
+          "text": {
+            "description": "The recognized text, for the attendee to review; empty when nothing was recognized",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "DictationResponse",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -191,11 +205,111 @@
     }
   },
   "info": {
-    "title": "ConferenceOps AI discovery-api",
+    "title": "ConferenceOps AI API",
     "version": "dev"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/dictation": {
+      "post": {
+        "description": "Transcribe one short recording, sent as the request body with its audio media type. The text comes back for the\nattendee to review and edit in the Ask bar; nothing is searched until they submit (PLAN \u00a79.2).",
+        "operationId": "dictate_api_v1_dictation_post",
+        "requestBody": {
+          "content": {
+            "audio/m4a": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/mp3": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/mp4": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/mpeg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/ogg": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/wav": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/wave": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/webm": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/x-m4a": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            },
+            "audio/x-wav": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "description": "The recording itself, at most 10 MB and 60 seconds.",
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "description": "The recording is empty"
+          },
+          "413": {
+            "description": "The recording is larger than the app's limit"
+          },
+          "415": {
+            "description": "The body isn't an audio type the recorder produces"
+          },
+          "503": {
+            "description": "Transcription isn't configured or isn't available; typing still works"
+          }
+        },
+        "summary": "Dictate",
+        "tags": [
+          "dictation"
+        ]
+      }
+    },
     "/api/v1/search": {
       "post": {
         "description": "Which talks match what I'm interested in? The query arrives in the body, never in the URL (PRIV-1).",
