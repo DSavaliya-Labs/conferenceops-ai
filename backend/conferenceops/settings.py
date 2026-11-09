@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     environment: str = "local"  # deployment.environment.name in telemetry
     service_version: str = "dev"  # the image tag (commit SHA) in Kubernetes
     otel_exporter_otlp_endpoint: str | None = None  # telemetry is exported only when this is set
+    database_url: str | None = None  # postgresql+psycopg://...; a Kubernetes Secret in the cluster
     log_level: str = "INFO"
     host: str = "0.0.0.0"  # noqa: S104 - containers listen on all interfaces; the Kubernetes Service limits exposure
     port: int = 8080

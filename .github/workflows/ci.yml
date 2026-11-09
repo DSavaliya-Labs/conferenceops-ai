@@ -67,8 +67,34 @@ jobs:
     name: data-integration
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: co
+          POSTGRES_PASSWORD: co
+          POSTGRES_DB: conferenceops
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U co" --health-interval 2s --health-timeout 2s --health-retries 30
+    env:
+      DATABASE_URL: postgresql+psycopg://co:co@localhost:5432/conferenceops
     steps:
-      - run: echo "::notice title=Not applicable yet::No data layer yet. The data model PR makes this check real."
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.13.7/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Migrations apply to an empty database
+        working-directory: backend
+        run: |
+          uv sync --frozen --python 3.12
+          uv run alembic upgrade head
+      - name: Integration tests (real PostgreSQL)
+        working-directory: backend
+        run: uv run pytest -q -m integration
 
   api-contract:
     name: api-contract
