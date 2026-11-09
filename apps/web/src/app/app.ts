@@ -1,11 +1,14 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
+import { AskAnswer } from './ask-answer';
 import { SearchResult, SearchService } from './search';
 
 type Status = 'idle' | 'searching' | 'done' | 'error';
 
 @Component({
   selector: 'app-root',
+  imports: [RouterOutlet, AskAnswer],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -16,6 +19,8 @@ export class App {
   protected readonly status = signal<Status>('idle');
   protected readonly results = signal<SearchResult[]>([]);
   protected readonly validation = signal('');
+  /** The question the archive answers with citations (app-ask-answer); set on each submit. */
+  protected readonly asked = signal('');
 
   /** One short status line for screen readers; never announced per keystroke (A11Y-1). */
   protected readonly announcement = computed(() => {
@@ -44,6 +49,7 @@ export class App {
       return;
     }
     this.status.set('searching');
+    this.asked.set(query);
     this.searchService.search(query).subscribe({
       next: (response) => {
         this.results.set(response.results);

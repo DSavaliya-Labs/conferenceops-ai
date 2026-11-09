@@ -109,7 +109,7 @@ def test_the_warning_names_only_the_missing_setting(caplog):
 def test_indexing_runs_when_elasticsearch_and_openai_are_configured():
     cfg = Settings(database_url=DATABASE_URL, elasticsearch_url="http://es:9200", openai_api_key="test-key")
 
-    assert [loop.name for loop in loops(cfg)] == ["import", "indexing"]
+    assert [loop.name for loop in loops(cfg)] == ["import", "indexing", "transcripts"]
 
 
 def test_without_a_database_the_worker_only_beats(caplog):

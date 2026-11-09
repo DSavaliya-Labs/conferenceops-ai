@@ -10,6 +10,7 @@ from elasticsearch import Elasticsearch
 from fastapi import Depends, HTTPException
 from openai import OpenAI
 
+from conferenceops.ask import router as ask_router
 from conferenceops.indexing import OpenAIEmbedder
 from conferenceops.search import HybridSearch, PostgresSearchSessions, SearchBackend, SearchRequest, SearchResponse
 from conferenceops.settings import settings
@@ -18,6 +19,7 @@ from conferenceops.web import create_app
 log = logging.getLogger("conferenceops.discovery")
 
 app = create_app("discovery-api")
+app.include_router(ask_router)  # POST /api/v1/ask: cited answers from published transcripts
 
 
 @lru_cache

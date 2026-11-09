@@ -3,9 +3,11 @@
 import uvicorn
 
 from conferenceops.settings import settings
+from conferenceops.transcripts import router as transcripts_router
 from conferenceops.web import create_app
 
 app = create_app("core-api")
+app.include_router(transcripts_router)  # GET /api/v1/sessions/{id}/replay, POST /api/v1/ops/transcripts/{id}/publish
 
 
 def run() -> None:

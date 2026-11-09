@@ -1,0 +1,97 @@
+:host {
+  display: block;
+  margin-top: 2rem;
+}
+
+.replay h2 {
+  font-size: 1.4rem;
+  margin: 0 0 0.25rem;
+}
+.labels {
+  margin: 0 0 0.25rem;
+  color: #3f3f50;
+}
+.badge {
+  display: inline-block;
+  border: 1px solid #3f3f50;
+  border-radius: 0.25rem;
+  padding: 0 0.4rem;
+  margin-right: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1a1a2e;
+  background: #eef0f7;
+}
+.provenance,
+.hint {
+  color: #3f3f50;
+  margin: 0.25rem 0 0.75rem;
+}
+.error {
+  color: #a4161a;
+  font-weight: 600;
+}
+
+.player {
+  display: block;
+  width: 100%;
+  max-width: 40rem;
+  background: #000000;
+}
+.controls {
+  margin: 0.5rem 0 1rem;
+}
+button {
+  font-size: 1rem;
+  padding: 0.5rem 1rem;
+  background: #1d4ed8;
+  color: #ffffff;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+button[aria-pressed='false'] {
+  background: #5b5b6e;
+}
+
+.transcript h3 {
+  font-size: 1.1rem;
+  margin: 1rem 0 0.25rem;
+}
+.cues {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid #c7c7d1;
+  border-radius: 0.25rem;
+}
+.cues li {
+  border-bottom: 1px solid #e3e3ea;
+}
+.cues li.current {
+  background: #e8efff;
+  border-left: 4px solid #1d4ed8;
+}
+.cue {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  color: #1a1a2e;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0;
+}
+.time {
+  display: inline-block;
+  min-width: 2.75rem;
+  color: #3f3f50;
+  font-variant-numeric: tabular-nums;
+}
+.processing {
+  padding: 0.6rem;
+  border: 1px solid #c7c7d1;
+  border-radius: 0.25rem;
+  background: #fff8e6;
+}

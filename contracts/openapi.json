@@ -1,6 +1,185 @@
 {
   "components": {
     "schemas": {
+      "AskRequest": {
+        "properties": {
+          "conference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Limit to one event, e.g. cloudbridge-summit-2026",
+            "title": "Conference"
+          },
+          "limit": {
+            "default": 4,
+            "description": "How many passages may be cited",
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "description": "The question; it travels in the body (PRIV-1)",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "AskRequest",
+        "type": "object"
+      },
+      "AskResponse": {
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "answerSource": {
+            "description": "model: written by the model from the cited passages; passages: not model-written, the best-matching passage quoted (the model was slow, down or returned nothing valid)",
+            "enum": [
+              "model",
+              "passages"
+            ],
+            "title": "Answersource",
+            "type": "string"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "title": "Citations",
+            "type": "array"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The event the citations come from",
+            "title": "Event"
+          },
+          "isFictional": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isfictional"
+          },
+          "retrievalMode": {
+            "enum": [
+              "hybrid",
+              "lexical"
+            ],
+            "title": "Retrievalmode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "answer",
+          "answerSource",
+          "citations",
+          "retrievalMode"
+        ],
+        "title": "AskResponse",
+        "type": "object"
+      },
+      "Citation": {
+        "properties": {
+          "chunkId": {
+            "title": "Chunkid",
+            "type": "string"
+          },
+          "endSeconds": {
+            "title": "Endseconds",
+            "type": "number"
+          },
+          "excerpt": {
+            "description": "The cited passage, from the published transcript",
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "label": {
+            "description": "'Simulated excerpt' for synthesized media (SPEAKER-1)",
+            "title": "Label",
+            "type": "string"
+          },
+          "replayPath": {
+            "description": "The app route of the replay at the cited moment, built by the server",
+            "title": "Replaypath",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "sessionTitle": {
+            "title": "Sessiontitle",
+            "type": "string"
+          },
+          "speaker": {
+            "title": "Speaker",
+            "type": "string"
+          },
+          "startSeconds": {
+            "title": "Startseconds",
+            "type": "number"
+          }
+        },
+        "required": [
+          "chunkId",
+          "sessionId",
+          "sessionTitle",
+          "speaker",
+          "startSeconds",
+          "endSeconds",
+          "replayPath",
+          "excerpt",
+          "label"
+        ],
+        "title": "Citation",
+        "type": "object"
+      },
+      "Cue": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "start": {
+            "description": "Seconds into the replay",
+            "title": "Start",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "text"
+        ],
+        "title": "Cue",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -12,6 +191,148 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "PublishRequest": {
+        "properties": {
+          "conference": {
+            "description": "The conference the session belongs to, e.g. cloudbridge-summit-2026",
+            "title": "Conference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "conference"
+        ],
+        "title": "PublishRequest",
+        "type": "object"
+      },
+      "PublishResponse": {
+        "properties": {
+          "changed": {
+            "description": "False when the transcript was already in that state",
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TranscriptStatus"
+          }
+        },
+        "required": [
+          "sessionId",
+          "status",
+          "revision",
+          "changed",
+          "note"
+        ],
+        "title": "PublishResponse",
+        "type": "object"
+      },
+      "ReplayMedia": {
+        "properties": {
+          "captionsUrl": {
+            "title": "Captionsurl",
+            "type": "string"
+          },
+          "durationSeconds": {
+            "title": "Durationseconds",
+            "type": "number"
+          },
+          "label": {
+            "description": "'Simulated excerpt': the media is synthesized for the fictional event (SPEAKER-1)",
+            "title": "Label",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "captionsUrl",
+          "durationSeconds",
+          "label"
+        ],
+        "title": "ReplayMedia",
+        "type": "object"
+      },
+      "ReplaySession": {
+        "properties": {
+          "conference": {
+            "title": "Conference",
+            "type": "string"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "isFictional": {
+            "title": "Isfictional",
+            "type": "boolean"
+          },
+          "speakers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Speakers",
+            "type": "array"
+          },
+          "startsAtVenue": {
+            "title": "Startsatvenue",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "speakers",
+          "event",
+          "conference",
+          "isFictional",
+          "startsAtVenue"
+        ],
+        "title": "ReplaySession",
+        "type": "object"
+      },
+      "ReplayView": {
+        "properties": {
+          "media": {
+            "$ref": "#/components/schemas/ReplayMedia"
+          },
+          "session": {
+            "$ref": "#/components/schemas/ReplaySession"
+          },
+          "transcript": {
+            "$ref": "#/components/schemas/TranscriptView"
+          }
+        },
+        "required": [
+          "session",
+          "media",
+          "transcript"
+        ],
+        "title": "ReplayView",
         "type": "object"
       },
       "SearchHit": {
@@ -148,6 +469,56 @@
         "title": "SearchResponse",
         "type": "object"
       },
+      "TranscriptStatus": {
+        "enum": [
+          "processing",
+          "published"
+        ],
+        "title": "TranscriptStatus",
+        "type": "string"
+      },
+      "TranscriptView": {
+        "properties": {
+          "cues": {
+            "description": "Empty until the transcript is published",
+            "items": {
+              "$ref": "#/components/schemas/Cue"
+            },
+            "title": "Cues",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TranscriptStatus"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The whole transcript; only when published (TRANSCRIPT-1)",
+            "title": "Text"
+          }
+        },
+        "required": [
+          "status",
+          "revision",
+          "label"
+        ],
+        "title": "TranscriptView",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -191,11 +562,193 @@
     }
   },
   "info": {
-    "title": "ConferenceOps AI discovery-api",
+    "title": "ConferenceOps AI API",
     "version": "dev"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/ask": {
+      "post": {
+        "description": "A question answered from published transcripts only, with citations that link to the replay. The question\narrives in the body, never in the URL (PRIV-1).",
+        "operationId": "ask_api_v1_ask_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AskResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ask",
+        "tags": [
+          "ask"
+        ]
+      }
+    },
+    "/api/v1/ops/transcripts/{session_id}/publish": {
+      "post": {
+        "description": "Organizer only (AUTHZ-1). Publishes the transcript: a new revision and its outbox job commit together, and\nthe text becomes searchable once the worker has indexed it (TRANSCRIPT-1, DATA-1).",
+        "operationId": "publish_transcript_api_v1_ops_transcripts__session_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-Profile-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Transcript",
+        "tags": [
+          "transcripts"
+        ]
+      }
+    },
+    "/api/v1/ops/transcripts/{session_id}/unpublish": {
+      "post": {
+        "description": "Organizer only (AUTHZ-1). Takes the transcript back to processing, as a correction does: a new revision whose\nprojection removes every chunk from search, and no older job can bring them back (DATA-1).",
+        "operationId": "unpublish_transcript_api_v1_ops_transcripts__session_id__unpublish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-Profile-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unpublish Transcript",
+        "tags": [
+          "transcripts"
+        ]
+      }
+    },
     "/api/v1/search": {
       "post": {
         "description": "Which talks match what I'm interested in? The query arrives in the body, never in the URL (PRIV-1).",
@@ -233,6 +786,50 @@
           }
         },
         "summary": "Search"
+      }
+    },
+    "/api/v1/sessions/{session_id}/replay": {
+      "get": {
+        "description": "The captioned replay of a concluded session, with its transcript only once published (TRANSCRIPT-1).",
+        "operationId": "get_replay_api_v1_sessions__session_id__replay_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Replay",
+        "tags": [
+          "transcripts"
+        ]
       }
     },
     "/health/live": {

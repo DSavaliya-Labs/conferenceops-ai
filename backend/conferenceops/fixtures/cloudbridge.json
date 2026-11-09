@@ -410,5 +410,277 @@
     {"key": "A18", "display_name": "Zainab Yusuf", "company": null, "interests": ["secrets management", "security"]},
     {"key": "A19", "display_name": "Arjun Mehta", "company": "Quillon Labs", "interests": ["observability", "AI agents"]},
     {"key": "A20", "display_name": "Freya Lindqvist", "company": null, "interests": ["reliability", "capacity planning"]}
+  ],
+  "transcripts": [
+    {
+      "session": "2",
+      "speaker": "S2",
+      "media": "/media/cloudbridge/clip-1.mp4",
+      "captions": "/media/cloudbridge/clip-1.vtt",
+      "duration_seconds": 68.0,
+      "status": "published",
+      "cues": [
+        {
+          "start": 1.5,
+          "end": 5.5,
+          "text": "Let me show you the morning our AI SRE agent got it wrong."
+        },
+        {
+          "start": 6.52,
+          "end": 9.54,
+          "text": "At six twelve, the checkout latency alarm fired."
+        },
+        {
+          "start": 9.54,
+          "end": 14.0,
+          "text": "Within forty seconds the agent had a diagnosis: the primary database was saturated,"
+        },
+        {
+          "start": 14.0,
+          "end": 18.98,
+          "text": "and it proposed a failover. It wrote a confident summary, with graphs."
+        },
+        {
+          "start": 18.98,
+          "end": 21.04,
+          "text": "The database was fine."
+        },
+        {
+          "start": 21.04,
+          "end": 24.04,
+          "text": "What the agent had seen was a jump in connection errors."
+        },
+        {
+          "start": 24.04,
+          "end": 27.32,
+          "text": "What it had ignored was a config push nine minutes earlier"
+        },
+        {
+          "start": 27.32,
+          "end": 31.62,
+          "text": "that set the connection pool to zero on three of our twelve pods."
+        },
+        {
+          "start": 31.62,
+          "end": 36.1,
+          "text": "The failover would have cost us about nine minutes of write downtime, for nothing."
+        },
+        {
+          "start": 36.1,
+          "end": 40.16,
+          "text": "The guardrail that caught it was boring, and that is the point."
+        },
+        {
+          "start": 40.16,
+          "end": 44.16,
+          "text": "Every change the agent proposes becomes a pull request with evidence links,"
+        },
+        {
+          "start": 44.16,
+          "end": 45.9,
+          "text": "and a human has to approve it."
+        },
+        {
+          "start": 45.9,
+          "end": 50.44,
+          "text": "Our on-call engineer opened the first link, saw that the errors came from three pods only,"
+        },
+        {
+          "start": 50.44,
+          "end": 52.64,
+          "text": "and rejected the fix in one click."
+        },
+        {
+          "start": 52.64,
+          "end": 53.86,
+          "text": "So here is my checklist."
+        },
+        {
+          "start": 54.92,
+          "end": 59.7,
+          "text": "Demand evidence links, not summaries. Keep every change reviewable."
+        },
+        {
+          "start": 59.7,
+          "end": 61.22,
+          "text": "And make it cheap for a human to say no."
+        }
+      ]
+    },
+    {
+      "session": "10",
+      "speaker": "S9",
+      "media": "/media/cloudbridge/clip-2.mp4",
+      "captions": "/media/cloudbridge/clip-2.vtt",
+      "duration_seconds": 73.2,
+      "status": "published",
+      "cues": [
+        {
+          "start": 1.5,
+          "end": 6.54,
+          "text": "Our internal developer portal had a search box that everyone ignored. Here is why."
+        },
+        {
+          "start": 6.54,
+          "end": 9.18,
+          "text": "Keyword search was great when you knew the exact words."
+        },
+        {
+          "start": 9.18,
+          "end": 13.96,
+          "text": "Type the error code E4031 and the runbook came up first."
+        },
+        {
+          "start": 13.96,
+          "end": 17.92,
+          "text": "But ask why does my deploy hang after the health check, and you got nothing,"
+        },
+        {
+          "start": 17.92,
+          "end": 21.3,
+          "text": "because the runbook says readiness probe timeout."
+        },
+        {
+          "start": 21.3,
+          "end": 24.54,
+          "text": "Semantic search was the mirror image. It understood the question,"
+        },
+        {
+          "start": 24.54,
+          "end": 30.12,
+          "text": "but it would rank a general page about probes above the one runbook that mentioned E4031."
+        },
+        {
+          "start": 31.18,
+          "end": 35.4,
+          "text": "So we stopped choosing. We run both queries in Elasticsearch:"
+        },
+        {
+          "start": 35.4,
+          "end": 40.14,
+          "text": "BM25 for the words, and a k-nearest-neighbors query over embeddings for the meaning,"
+        },
+        {
+          "start": 40.14,
+          "end": 42.08,
+          "text": "with the same filters on both."
+        },
+        {
+          "start": 42.08,
+          "end": 45.92,
+          "text": "Then we fuse the two ranked lists with reciprocal rank fusion."
+        },
+        {
+          "start": 45.92,
+          "end": 52.04,
+          "text": "Each document scores one over sixty plus its rank in each list, and the sums decide the order."
+        },
+        {
+          "start": 52.04,
+          "end": 54.1,
+          "text": "No tuning, no learned weights."
+        },
+        {
+          "start": 54.1,
+          "end": 57.44,
+          "text": "On our forty golden queries, the right page landed in the top five"
+        },
+        {
+          "start": 58.94,
+          "end": 62.96,
+          "text": "sixty-one percent of the time with keywords alone, and eighty-four percent with the hybrid."
+        },
+        {
+          "start": 62.96,
+          "end": 66.6,
+          "text": "The cost is two queries instead of one, and that was worth it."
+        }
+      ]
+    },
+    {
+      "session": "18",
+      "speaker": "S9",
+      "media": "/media/cloudbridge/clip-3.mp4",
+      "captions": "/media/cloudbridge/clip-3.vtt",
+      "duration_seconds": 71.0,
+      "status": "processing",
+      "cues": [
+        {
+          "start": 1.5,
+          "end": 6.74,
+          "text": "A language model call is the slowest, most expensive and least predictable dependency"
+        },
+        {
+          "start": 6.74,
+          "end": 11.62,
+          "text": "most of us have ever added to a request path. So trace it like one."
+        },
+        {
+          "start": 11.62,
+          "end": 14.36,
+          "text": "Every call in our service gets its own span."
+        },
+        {
+          "start": 14.36,
+          "end": 18.88,
+          "text": "We record the model name, the input and output token counts, an estimated cost,"
+        },
+        {
+          "start": 18.88,
+          "end": 24.26,
+          "text": "and whether the response was served from cache. The latency is the span itself."
+        },
+        {
+          "start": 24.26,
+          "end": 25.92,
+          "text": "What we never record is the prompt."
+        },
+        {
+          "start": 25.92,
+          "end": 31.64,
+          "text": "The prompt carries the user's own words, and a trace is not a safe place for them."
+        },
+        {
+          "start": 31.64,
+          "end": 35.14,
+          "text": "We also keep the model's answer out of the span attributes."
+        },
+        {
+          "start": 35.14,
+          "end": 41.32,
+          "text": "If we need to debug the content, we do it with a sampled, access-controlled store, not with telemetry."
+        },
+        {
+          "start": 41.32,
+          "end": 45.08,
+          "text": "With that in place, a slow answer stops being a mystery."
+        },
+        {
+          "start": 45.08,
+          "end": 48.34,
+          "text": "Last month one feature doubled its p95 latency."
+        },
+        {
+          "start": 48.34,
+          "end": 52.32,
+          "text": "The spans showed retries: every timeout was being retried twice,"
+        },
+        {
+          "start": 52.32,
+          "end": 55.08,
+          "text": "so one slow model call turned into three."
+        },
+        {
+          "start": 55.08,
+          "end": 59.74,
+          "text": "We also roll the token counts into a metric: cost per feature, per hour."
+        },
+        {
+          "start": 59.74,
+          "end": 63.86,
+          "text": "The first week it ran, it found an internal tool that spent more than the product did."
+        }
+      ]
+    }
   ]
 }

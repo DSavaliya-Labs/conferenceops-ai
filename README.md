@@ -49,6 +49,15 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   desks.
 - **Real speakers' words stay theirs.** No transcript, quote or live text is ever generated for a real KubeCon
   speaker.
+- **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
+  replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
+  such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
+  **published** transcripts only, by an OpenAI model that may use nothing but the retrieved passages; every citation
+  is checked against the database and links to the replay at that moment, and a slow or failed model call falls
+  back to the best-matching passage, marked as not model-written. A transcript that is still processing says so on
+  its replay page and is neither searchable nor citable until an organizer publishes it
+  (`POST /api/v1/ops/transcripts/{session_id}/publish`, organizer persona required), and even then only once the
+  worker has projected it into Elasticsearch.
 - **An AI operations team.** Dash0 watches what attendees experience. When a check fails, Agent0 investigates and
   opens a fix pull request, Gitar reviews it, and GitHub Actions deploys it to AKS once it merges. Radar's AI SRE
   investigates the cluster. See [the operations loop](#the-operations-loop).

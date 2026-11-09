@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     elasticsearch_password: str | None = None
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
+    # Ask's reasoning model (Responses API, structured outputs) and how long one answer may take before the
+    # deterministic fallback answers instead (AI-1). gpt-6-luna: OpenAI's efficient model for focused tasks.
+    openai_model: str = "gpt-6-luna"
+    openai_ask_timeout_seconds: float = 10.0
     import_interval_seconds: float = 1800.0  # how often the worker re-imports the KubeCon feed
     log_level: str = "INFO"
     host: str = "0.0.0.0"  # noqa: S104 - containers listen on all interfaces; the Kubernetes Service limits exposure

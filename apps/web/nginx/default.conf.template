@@ -35,6 +35,11 @@ server {
         proxy_pass $core;
         proxy_set_header Host $host;
     }
+    # The CloudBridge replay captions (apps/web/public/media/cloudbridge): nginx's mime.types has no WebVTT entry.
+    location ~* \.vtt$ {
+        types { }
+        default_type text/vtt;
+    }
     location / {
         try_files $uri $uri/ /index.html;
     }
