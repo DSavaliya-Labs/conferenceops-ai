@@ -242,6 +242,7 @@ const EXCLUSION_LABELS: Record<string, string> = {
       padding-left: 1.25rem;
       display: grid;
       gap: var(--space-1);
+      list-style: disc;
     }
     .not-published {
       font-weight: 600;

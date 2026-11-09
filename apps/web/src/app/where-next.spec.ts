@@ -162,16 +162,14 @@ describe('Where should I go next?', () => {
     const view = await start();
     await choosePersona(view, 'Tomás Vega');
     await askWhereNext(view);
-    view.http
-      .expectOne('/api/v1/recommendations/next')
-      .flush(
-        answer({
-          status: 'no_fit',
-          candidates: [],
-          warnings: [],
-          excluded: { AGENDA_CONFLICT: 1, NO_MATCH: 4 },
-        }),
-      );
+    view.http.expectOne('/api/v1/recommendations/next').flush(
+      answer({
+        status: 'no_fit',
+        candidates: [],
+        warnings: [],
+        excluded: { AGENDA_CONFLICT: 1, NO_MATCH: 4 },
+      }),
+    );
     await settle(view);
     const results = view.el.querySelector('app-where-next-cards')!;
     expect(text(results.querySelector('h2'))).toContain('No talk fits for the rest of today');

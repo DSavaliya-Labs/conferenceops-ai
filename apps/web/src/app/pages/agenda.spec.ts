@@ -86,15 +86,13 @@ describe('My agenda', () => {
 
   it('says when a persona has nothing yet, instead of showing an empty list', async () => {
     const view = await start(TOMAS.id);
-    view.http
-      .expectOne(AGENDA_URL)
-      .flush({
-        ...AGENDA,
-        profileId: TOMAS.id,
-        displayName: 'Tomás Vega',
-        bookmarked: [],
-        attended: [],
-      });
+    view.http.expectOne(AGENDA_URL).flush({
+      ...AGENDA,
+      profileId: TOMAS.id,
+      displayName: 'Tomás Vega',
+      bookmarked: [],
+      attended: [],
+    });
     await settle(view);
     expect(text(view.el)).toContain("Tomás Vega hasn't bookmarked a talk yet");
     expect(text(view.el)).toContain('No attended talks on record for Tomás Vega');

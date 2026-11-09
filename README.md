@@ -42,9 +42,14 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
     bookmarks, and every card says why, in reasons you can check. The answer is deterministic. A generated
     explanation (OpenAI, picking only from these cards, every ID checked, this answer as the fallback) isn't built
     yet.
-  - **"Viewing as"** switches between the eight fictional demo personas. The server looks the persona up from the
-    `X-Demo-Profile-ID` header and trusts nothing else the browser says about her; it is a demo switch, not a
-    sign-in.
+  - **"Viewing as"** switches between the eight fictional demo personas, from the account menu at the top right.
+    The server looks the persona up from the `X-Demo-Profile-ID` header and trusts nothing else the browser says
+    about her; it is a demo switch, not a sign-in.
+- **The attendee portal.** One shell for every feature: the Ask bar centered in the app bar with its inline
+  Search, Where next and Dictate buttons, the persona menu, and a left navigation (a menu button on narrow screens)
+  to Find talks, Where next, My agenda (the persona's bookmarks and attended talks), Events (real versus fictional,
+  with counts), Accessibility at the venue (the published access facts with their sources), and How this platform
+  runs (the operations loop, for judges). Keyboard-first, light and dark, down to 320 px wide.
 - **Honest accessibility facts.** Only what the official KubeCon
   [Inclusion + Accessibility page](https://events.linuxfoundation.org/kubecon-cloudnativecon-north-america/attend/inclusion-accessibility/)
   publishes (read on November 6, 2026), each shown with its source link: Wordly captioning, reserved seating, quiet

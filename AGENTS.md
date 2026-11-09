@@ -34,13 +34,15 @@ and shows a platform run by an AI operations team.
 
 | Path | What lives there |
 |---|---|
-| `apps/web/` | Angular app |
+| `apps/web/` | Angular app: the attendee portal. `src/app/app.ts` is the shell (app bar with the Ask bar and the persona menu, left navigation, routed pages); `src/app/pages/` holds one page per feature (`/talks`, `/where-next`, `/agenda`, `/events`, `/accessibility`, `/operations`), each a route in `app.routes.ts` and an entry in `NAV_LINKS`; `src/styles.css` holds the design tokens (light and dark) |
 | `apps/web/src/app/dictation-button.ts`, `backend/conferenceops/dictation.py` | Dictation, the spoken half of the Ask bar: the microphone button next to it, and `POST /api/v1/dictation` on core-api (`gpt-transcribe` through the server, never from the browser). The text lands in the Ask bar for review; nothing is searched until the attendee submits. PRIV-1: the audio is never stored, and neither it nor the text reaches logs or spans |
 | `backend/conferenceops/` | `core_app`, `discovery_app`, `worker`, shared domain, services and repositories |
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
 | `backend/conferenceops/personas.py` | The persona switcher's list, `GET /api/v1/demo/profiles` on core-api (public fields only), and the `X-Demo-Profile-ID` header (AUTHZ-1) |
 | `backend/conferenceops/where_next.py`, `where_next_data.py` | "Where should I go next?", `POST /api/v1/recommendations/next` on discovery-api: hard rules, then ranking, with checkable reasons; the ranking weights live in `where_next.py` |
+| `backend/conferenceops/portal.py` | The portal's reads on core-api: `GET /api/v1/conferences` (both events, counts), `GET /api/v1/conferences/{slug}/access-facts` (the stored facts with their source links, ACCESS-1; 404 for an unknown event) and `GET /api/v1/me/agenda` (the persona's bookmarks and attended sessions behind `X-Demo-Profile-ID`, AUTHZ-1; public fields only, PRIV-1) |
+| `docs/screenshots/` | Screenshots of the portal from the pull request that built it, referenced from that PR |
 | `backend/conferenceops/admission.py` | discovery-api's admission control: at most `DISCOVERY_MAX_INFLIGHT` requests in progress per pod on its `/api/v1` routes (chart value `components.discovery.maxInflight`); above that, an immediate 503 `DISCOVERY_CAPACITY_EXHAUSTED` with `Retry-After`, recorded on the server span, in a metric and in one log line |
 | `contracts/` | Committed OpenAPI schema (core-api and discovery-api in one document, from `python -m conferenceops.export_openapi`) and the generated Angular client |
 | `backend/conferenceops/fixtures/` | The CloudBridge Summit fixture (`cloudbridge.json`), inside the package so it ships in the image; `python -m conferenceops.cloudbridge` loads it |
