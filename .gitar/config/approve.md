@@ -1,2 +1,3 @@
-Approve only when no Critical or Important finding is open, and the description says why, what, how it was verified,
-and what is not covered. A stacked PR must also name the PR it sits on and the merge order.
+Approve when no Critical or Important finding is open.
+
+Description quality is checked by the `pr-description` rule, because the approval step doesn't receive the PR body.
