@@ -154,6 +154,7 @@ export class DictationButton implements OnDestroy {
   private recorder: MediaRecorder | null = null;
   private chunks: Blob[] = [];
   private discard = false;
+  private starting = false;
   private limitTimer: ReturnType<typeof setTimeout> | null = null;
 
   protected toggle(): void {
@@ -169,50 +170,60 @@ export class DictationButton implements OnDestroy {
   }
 
   protected async start(): Promise<void> {
-    const mediaDevices = navigator.mediaDevices;
-    if (!mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      this.fail(
-        window.isSecureContext === false
-          ? `Dictation needs a secure (https) connection or localhost, and this page isn't one. ${TYPE_IT}`
-          : `This browser can't record audio. ${TYPE_IT}`,
-      );
-      return;
-    }
-    let stream: MediaStream;
-    try {
-      stream = await mediaDevices.getUserMedia({ audio: true });
-    } catch (error) {
-      this.fail(describeMicrophoneError(error));
-      return;
-    }
-    const mimeType = PREFERRED_TYPES.find((type) => MediaRecorder.isTypeSupported?.(type));
-    let recorder: MediaRecorder;
-    try {
-      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    } catch {
-      stream.getTracks().forEach((track) => track.stop());
-      this.fail(`This browser can't record audio. ${TYPE_IT}`);
-      return;
-    }
-    this.stream = stream;
-    this.recorder = recorder;
-    this.chunks = [];
+    if (this.starting || this.recorder) return;
+    this.starting = true;
     this.discard = false;
-    recorder.addEventListener('dataavailable', (event) => {
-      if (event.data.size > 0) {
-        this.chunks.push(event.data);
+    try {
+      const mediaDevices = navigator.mediaDevices;
+      if (!mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+        this.fail(
+          window.isSecureContext === false
+            ? `Dictation needs a secure (https) connection or localhost, and this page isn't one. ${TYPE_IT}`
+            : `This browser can't record audio. ${TYPE_IT}`,
+        );
+        return;
       }
-    });
-    recorder.addEventListener('stop', () => this.finish());
-    recorder.addEventListener('error', () => {
-      this.discard = true;
-      this.release();
-      this.fail(`Recording failed. ${TYPE_IT}`);
-    });
-    recorder.start();
-    this.state.set('recording');
-    this.message.set(`Recording, up to ${this.maxSeconds()} seconds. Press Stop recording when you're done.`);
-    this.limitTimer = setTimeout(() => this.stop(), this.maxSeconds() * 1000);
+      let stream: MediaStream;
+      try {
+        stream = await mediaDevices.getUserMedia({ audio: true });
+      } catch (error) {
+        if (!this.discard) this.fail(describeMicrophoneError(error));
+        return;
+      }
+      if (this.discard) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const mimeType = PREFERRED_TYPES.find((type) => MediaRecorder.isTypeSupported?.(type));
+      let recorder: MediaRecorder;
+      try {
+        recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      } catch {
+        stream.getTracks().forEach((track) => track.stop());
+        this.fail(`This browser can't record audio. ${TYPE_IT}`);
+        return;
+      }
+      this.stream = stream;
+      this.recorder = recorder;
+      this.chunks = [];
+      recorder.addEventListener('dataavailable', (event) => {
+        if (event.data.size > 0) {
+          this.chunks.push(event.data);
+        }
+      });
+      recorder.addEventListener('stop', () => this.finish());
+      recorder.addEventListener('error', () => {
+        this.discard = true;
+        this.release();
+        this.fail(`Recording failed. ${TYPE_IT}`);
+      });
+      recorder.start();
+      this.state.set('recording');
+      this.message.set(`Recording, up to ${this.maxSeconds()} seconds. Press Stop recording when you're done.`);
+      this.limitTimer = setTimeout(() => this.stop(), this.maxSeconds() * 1000);
+    } finally {
+      this.starting = false;
+    }
   }
 
   /** Stop and transcribe. The recorder's stop event delivers the last chunk and then calls finish(). */

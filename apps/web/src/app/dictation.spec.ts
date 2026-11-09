@@ -171,6 +171,45 @@ describe('Dictation (the spoken half of the Ask bar)', () => {
     http.expectNone('/api/v1/search'); // nothing is submitted until the attendee presses Search
   });
 
+  it('ignores repeated Dictate clicks while microphone access is pending', async () => {
+    let resolveMicrophone!: (stream: MediaStream) => void;
+    const pendingMicrophone = new Promise<MediaStream>((resolve) => (resolveMicrophone = resolve));
+    const getUserMedia = vi.fn(() => pendingMicrophone);
+    installMediaApis(getUserMedia);
+    const { fixture, el } = render();
+    const mic = el.querySelector<HTMLButtonElement>('button.mic')!;
+
+    mic.click();
+    mic.click();
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+
+    const { track, stream } = fakeMicrophone();
+    resolveMicrophone(stream);
+    await settle();
+    fixture.detectChanges();
+
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+    expect(FakeMediaRecorder.instances[0].state).toBe('recording');
+    fixture.destroy();
+    expect(track.stop).toHaveBeenCalled();
+  });
+
+  it('releases a microphone stream that arrives after the component is destroyed', async () => {
+    let resolveMicrophone!: (stream: MediaStream) => void;
+    const pendingMicrophone = new Promise<MediaStream>((resolve) => (resolveMicrophone = resolve));
+    installMediaApis(() => pendingMicrophone);
+    const { fixture, el } = render();
+
+    el.querySelector<HTMLButtonElement>('button.mic')!.click();
+    fixture.destroy();
+    const { track, stream } = fakeMicrophone();
+    resolveMicrophone(stream);
+    await settle();
+
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(track.stop).toHaveBeenCalled();
+  });
+
   it('cancel throws the recording away: nothing is sent, focus returns to the button', async () => {
     const { track, stream } = fakeMicrophone();
     installMediaApis(() => Promise.resolve(stream));
