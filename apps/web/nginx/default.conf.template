@@ -25,6 +25,14 @@ server {
         return 200 '{"dash0Endpoint":"${DASH0_WEB_ENDPOINT}","dash0Token":"${DASH0_BROWSER_TOKEN}","dash0Dataset":"${DASH0_DATASET}","environment":"${ENVIRONMENT}","version":"${SERVICE_VERSION}"}';
     }
 
+    # Dictation: the recording goes to core-api as the request body. nginx's default body limit is 1 MB; the
+    # app's own recording limit is 10 MB (PLAN §9.2), and core-api refuses anything larger with 413 as well.
+    location = /api/v1/dictation {
+        client_max_body_size 10m;
+        set $core http://${CORE_UPSTREAM};
+        proxy_pass $core;
+        proxy_set_header Host $host;
+    }
     location ~ ^/api/v1/(search|recommendations|ask) {
         set $discovery http://${DISCOVERY_UPSTREAM};
         proxy_pass $discovery;

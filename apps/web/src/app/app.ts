@@ -1,8 +1,9 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, ElementRef, computed, inject, signal, viewChild } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { Subscription } from 'rxjs';
 
 import { AskAnswer } from './ask-answer';
+import { DictationButton } from './dictation-button';
 import { PersonaSwitcher } from './persona-switcher';
 import { PersonaService } from './personas';
 import { SearchResult, SearchService } from './search';
@@ -14,7 +15,7 @@ type WhereNextStatus = 'idle' | 'loading' | 'done' | 'error';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, PersonaSwitcher, WhereNextCards, AskAnswer],
+  imports: [RouterOutlet, DictationButton, PersonaSwitcher, WhereNextCards, AskAnswer],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
@@ -22,6 +23,7 @@ export class App {
   private readonly searchService = inject(SearchService);
   private readonly whereNextService = inject(WhereNextService);
   protected readonly personas = inject(PersonaService);
+  private readonly askInput = viewChild.required<ElementRef<HTMLInputElement>>('askInput');
 
   protected readonly query = signal('');
   protected readonly status = signal<Status>('idle');
@@ -76,6 +78,14 @@ export class App {
   protected onInput(event: Event): void {
     this.query.set((event.target as HTMLInputElement).value);
     this.validation.set('');
+  }
+
+  /** Dictated text lands in the Ask bar for review: focus moves there, and nothing is searched until the attendee
+   *  presses Search (PLAN §9.2). */
+  protected onDictated(text: string): void {
+    this.query.set(text);
+    this.validation.set('');
+    this.askInput().nativeElement.focus();
   }
 
   protected submit(event: Event): void {

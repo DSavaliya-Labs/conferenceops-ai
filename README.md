@@ -54,6 +54,11 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   desks.
 - **Real speakers' words stay theirs.** No transcript, quote or live text is ever generated for a real KubeCon
   speaker.
+- **Spoken questions.** The microphone next to the Ask bar records up to 60 seconds; `core-api` sends the recording
+  to OpenAI's `gpt-transcribe` and the text lands in the Ask bar for review. Nothing is searched until you press
+  Search. A denied microphone or a failed transcription says so, and typing keeps working. The audio is never stored,
+  and neither it nor the text reaches logs or telemetry. Browsers allow the microphone only on HTTPS or `localhost`,
+  and the public URL is plain HTTP today, so dictation works on a local or port-forwarded instance.
 - **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
   replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
   such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
