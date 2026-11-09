@@ -12,21 +12,32 @@ Kubernetes events (as logs). The Dash0 dashboard "ConferenceOps: attendee impact
    request rate, its 5xx share by status code and by pod, the p95 of POST /api/v1/search, its Elasticsearch calls,
    a few failing traces with their logs, and the replicas and pods of `conferenceops-discovery`. Know what the
    telemetry can and can't show:
-   - The code `DISCOVERY_CAPACITY_EXHAUSTED` is in the body of discovery-api's 503 responses, and response bodies
-     are not in telemetry. Look for the code where discovery-api records it: an attribute of the failing server
-     spans, or the reason on its admission-rejection metric. Where it isn't recorded, its absence is no evidence
-     either way.
-   - Admission control turns away only the requests above a pod's limit, before any retrieval work. A rejected
-     request's server span is short, has no Elasticsearch child span, and no failed search is logged for its trace,
-     while the same pod keeps answering other searches.
+   - Admission control is a per-pod limit on discovery-api requests in progress (`DISCOVERY_MAX_INFLIGHT`, the chart
+     value `components.discovery.maxInflight`). A request that finds every slot taken waits at most a moment, then
+     gets a 503 with the code `DISCOVERY_CAPACITY_EXHAUSTED` in its body, before any retrieval work. Response bodies
+     are not in telemetry, so discovery-api records each rejection three ways:
+     - its server span has HTTP status 503, span status ERROR and the attribute `conferenceops.error.code` =
+       `DISCOVERY_CAPACITY_EXHAUSTED` (the label `conferenceops_error_code` on `dash0.spans`);
+     - the counter `conferenceops.admission.rejections` counts it with `reason` = `capacity_exhausted`, next to the
+       gauges `conferenceops.admission.in_flight` and `conferenceops.admission.limit`;
+     - one warning log line per rejection, "Discovery is at capacity: answered 503 DISCOVERY_CAPACITY_EXHAUSTED, N of
+       N slots in use, ...", with the trace ID.
+     A 503 without that attribute is not an admission rejection. The status code is the label
+     `http_status_code` or `http_response_status_code` on `dash0.spans`, depending on the dataset's semantic
+     convention upgrades: check both.
+   - A rejected request's server span is short and has no Elasticsearch child span, and no failed search is logged
+     for its trace, while the same pod keeps answering other searches.
+   - The limit counts requests in progress, so slower requests fill it too. If Elasticsearch calls got slower or
+     started failing before the rejections began, the cause is upstream: more replicas would only send it more load.
    - Elasticsearch calls are traced: client spans with `db.system.name` `elasticsearch`. OpenAI and PostgreSQL
      calls may have no spans. Judge them from discovery-api's logs, which carry trace IDs, and treat missing OpenAI
      or PostgreSQL spans as no evidence either way. discovery-api is built to fail open when OpenAI is slow or down
      (AI-1 in `AGENTS.md`), so an OpenAI problem alone should show as warnings in its logs, not as 5xx.
 2. Decide which cause the evidence supports:
-   - Admission saturation: the 5xx are 503 admission rejections, shown by the recorded code or by the shape above,
-     on every available pod, while Elasticsearch calls stay healthy and discovery-api's logs show no failing
-     dependency. The capacity of discovery is the bottleneck.
+   - Admission saturation: the 5xx are 503 admission rejections, shown by `conferenceops.error.code` or the
+     rejection counter, on every available pod, while Elasticsearch latency and errors stay at their level from
+     before the overload and discovery-api's logs show no failing dependency. The capacity of discovery is the
+     bottleneck.
    - Upstream failure: Elasticsearch calls fail or time out, or discovery-api's logs tie the 5xx to a failed
      dependency (Elasticsearch, PostgreSQL or OpenAI), for example 503 "Search isn't available right now" after a
      failed search.
@@ -37,9 +48,9 @@ Kubernetes events (as logs). The Dash0 dashboard "ConferenceOps: attendee impact
    - Change only `components.discovery.replicas` or `components.discovery.resources` in
      `deploy/env/aks/values.yaml`. Size replicas from the evidence: the offered request rate divided by what one pod
      accepts, rounded up, plus one pod of headroom. Keep replicas between 1 and 5, the chart's bounds.
-   - Change nothing else: not the image, the admission limit or any other value, and no other file. Never change
-     tests, CI (`.github/`), review policy (`.gitar/`, `AGENTS.md`), the load test or its rate (`ops/load/`), check
-     rules, thresholds or dashboards (`observability/`), or credentials.
+   - Change nothing else: not the image, the admission limit (`components.discovery.maxInflight`) or any other
+     value, and no other file. Never change tests, CI (`.github/`), review policy (`.gitar/`, `AGENTS.md`), the load
+     test or its rate (`ops/load/`), check rules, thresholds or dashboards (`observability/`), or credentials.
    - Add the labels `incident` and `gitar-managed`.
    - Write the description in these four sections. The repository's review fails a pull request without them:
      - `## Why`: the cause and its evidence, with Dash0 links (the failed check, the charts or queries, example
