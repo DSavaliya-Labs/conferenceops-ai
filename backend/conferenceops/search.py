@@ -22,6 +22,7 @@ log = logging.getLogger("conferenceops.search")
 RRF_K = 60
 CANDIDATES = 50
 VENUE_TZ = ZoneInfo("America/Denver")
+TEXT_FIELDS = ["title^3", "abstract", "topics^2"]  # what BM25 matches, with its boosts
 
 
 class ApiModel(BaseModel):
@@ -91,26 +92,37 @@ class PostgresSearchSessions:
         return {str(session.id): (session, event, room) for session, event, room in rows}
 
 
-def rrf_fuse(rankings: Sequence[Sequence[str]], k: int = RRF_K) -> list[str]:
-    """Reciprocal rank fusion: score(d) = sum(1 / (k + rank)), ranks start at 1. Ties break by ID, so the order is
-    deterministic."""
+def rrf_scores(rankings: Sequence[Sequence[str]], k: int = RRF_K) -> dict[str, float]:
+    """Reciprocal rank fusion scores: score(d) = sum(1 / (k + rank)), ranks start at 1."""
     scores: dict[str, float] = {}
     for ranking in rankings:
         for rank, doc_id in enumerate(ranking, start=1):
             scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+    return scores
+
+
+def rrf_fuse(rankings: Sequence[Sequence[str]], k: int = RRF_K) -> list[str]:
+    """Reciprocal rank fusion, best first. Ties break by ID, so the order is deterministic."""
+    scores = rrf_scores(rankings, k)
     return sorted(scores, key=lambda d: (-scores[d], d))
 
 
-def venue_time(instant: datetime) -> str:
-    local = instant.astimezone(VENUE_TZ)
+def venue_time(instant: datetime, zone: ZoneInfo = VENUE_TZ) -> str:
+    """The instant on the event's wall clock, in its IANA time zone (TIME-1)."""
+    local = instant.astimezone(zone)
     return f"{local:%a %b} {local.day}, {local:%I:%M %p %Z}".replace(" 0", " ")
 
 
-def _filters(request: SearchRequest) -> list[dict]:
+def session_filters(conference: str | None) -> list[dict]:
+    """The filters every session retrieval uses, in both channels: never a service session, optionally one event."""
     filters: list[dict] = [{"term": {"is_service": False}}]
-    if request.conference:
-        filters.append({"term": {"conference": request.conference}})
+    if conference:
+        filters.append({"term": {"conference": conference}})
     return filters
+
+
+def _filters(request: SearchRequest) -> list[dict]:
+    return session_filters(request.conference)
 
 
 class HybridSearch:
@@ -122,7 +134,7 @@ class HybridSearch:
     def _bm25(self, request: SearchRequest) -> list[str]:
         body = {
             "bool": {
-                "must": {"multi_match": {"query": request.query, "fields": ["title^3", "abstract", "topics^2"]}},
+                "must": {"multi_match": {"query": request.query, "fields": TEXT_FIELDS}},
                 "filter": _filters(request),
             }
         }

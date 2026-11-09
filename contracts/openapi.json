@@ -1,6 +1,175 @@
 {
   "components": {
     "schemas": {
+      "AccessStatement": {
+        "properties": {
+          "kind": {
+            "description": "captions, reserved_seating, or step_free_route",
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the event publishes it (ACCESS-1)",
+            "title": "Sourceurl"
+          },
+          "status": {
+            "enum": [
+              "published",
+              "not_published"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "description": "The event's published wording, or why it isn't published",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "status",
+          "text"
+        ],
+        "title": "AccessStatement",
+        "type": "object"
+      },
+      "Candidate": {
+        "properties": {
+          "access": {
+            "items": {
+              "$ref": "#/components/schemas/AccessStatement"
+            },
+            "title": "Access",
+            "type": "array"
+          },
+          "conference": {
+            "title": "Conference",
+            "type": "string"
+          },
+          "eligibility": {
+            "description": "confirmed: every access need the persona set is backed by a published fact. unconfirmed: one can't be confirmed from published information (step-free routes never can); `access` says which.",
+            "enum": [
+              "confirmed",
+              "unconfirmed"
+            ],
+            "title": "Eligibility",
+            "type": "string"
+          },
+          "endsAt": {
+            "format": "date-time",
+            "title": "Endsat",
+            "type": "string"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "isFictional": {
+            "title": "Isfictional",
+            "type": "boolean"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "sourceIds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sourceids",
+            "type": "array"
+          },
+          "sourceRevision": {
+            "title": "Sourcerevision",
+            "type": "integer"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "title": "Startsat",
+            "type": "string"
+          },
+          "startsAtVenue": {
+            "description": "Start in the event's time zone, e.g. 'Tue Nov 10, 10:30 AM MST'",
+            "title": "Startsatvenue",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "title",
+          "event",
+          "conference",
+          "isFictional",
+          "startsAt",
+          "endsAt",
+          "startsAtVenue",
+          "eligibility",
+          "score",
+          "sourceRevision",
+          "access",
+          "reasons",
+          "sourceIds"
+        ],
+        "title": "Candidate",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -12,6 +181,305 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Notice": {
+        "properties": {
+          "code": {
+            "enum": [
+              "STEP_FREE_NOT_PUBLISHED",
+              "NO_SIGNALS"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sourceurl"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "Notice",
+        "type": "object"
+      },
+      "PersonaCard": {
+        "description": "A selectable persona: public fields only (PRIV-1).",
+        "properties": {
+          "company": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interests": {
+            "description": "Public professional interests",
+            "items": {
+              "type": "string"
+            },
+            "title": "Interests",
+            "type": "array"
+          },
+          "isFictional": {
+            "title": "Isfictional",
+            "type": "boolean"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "role",
+          "isFictional"
+        ],
+        "title": "PersonaCard",
+        "type": "object"
+      },
+      "PersonaList": {
+        "properties": {
+          "personas": {
+            "items": {
+              "$ref": "#/components/schemas/PersonaCard"
+            },
+            "title": "Personas",
+            "type": "array"
+          }
+        },
+        "required": [
+          "personas"
+        ],
+        "title": "PersonaList",
+        "type": "object"
+      },
+      "Reason": {
+        "properties": {
+          "code": {
+            "enum": [
+              "INTEREST_MATCH",
+              "HISTORY_MATCH",
+              "BOOKMARK_MATCH",
+              "CAPTIONS_PUBLISHED"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "interests": {
+            "description": "INTEREST_MATCH: the interests the talk mentions",
+            "items": {
+              "type": "string"
+            },
+            "title": "Interests",
+            "type": "array"
+          },
+          "relatedSessionId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "HISTORY_MATCH, BOOKMARK_MATCH: the past talk",
+            "title": "Relatedsessionid"
+          },
+          "similarity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Cosine similarity of the two talks' embeddings",
+            "title": "Similarity"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "text"
+        ],
+        "title": "Reason",
+        "type": "object"
+      },
+      "RecommendationFilters": {
+        "properties": {
+          "excludedLevels": {
+            "description": "Levels to leave out, on top of the persona's saved exclusions. A request adds exclusions; it never removes a saved one.",
+            "items": {
+              "enum": [
+                "beginner",
+                "intermediate",
+                "advanced",
+                "all"
+              ],
+              "type": "string"
+            },
+            "title": "Excludedlevels",
+            "type": "array"
+          }
+        },
+        "title": "RecommendationFilters",
+        "type": "object"
+      },
+      "RecommendationRequest": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/RecommendationFilters"
+          },
+          "limit": {
+            "default": 3,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "query": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional words that refine the ranking among the talks that match the persona's interests or history. Never logged (PRIV-1).",
+            "title": "Query"
+          },
+          "window": {
+            "default": "any",
+            "description": "today: the rest of the event's current day. tomorrow_morning: the event's next day until noon. any: every session that hasn't started. Days are in the event's time zone (TIME-1).",
+            "enum": [
+              "today",
+              "tomorrow_morning",
+              "any"
+            ],
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "title": "RecommendationRequest",
+        "type": "object"
+      },
+      "RecommendationResponse": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "conferenceTime": {
+            "description": "Now on the event's clock (UTC)",
+            "format": "date-time",
+            "title": "Conferencetime",
+            "type": "string"
+          },
+          "conferenceTimeVenue": {
+            "title": "Conferencetimevenue",
+            "type": "string"
+          },
+          "excluded": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.",
+            "title": "Excluded",
+            "type": "object"
+          },
+          "observedAt": {
+            "description": "The actual wall-clock time (UTC)",
+            "format": "date-time",
+            "title": "Observedat",
+            "type": "string"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "retrievalMode": {
+            "description": "lexical: the interests and query were matched by keywords only, because the embedding model didn't answer (AI-1). History matching uses stored vectors and needs no model call.",
+            "enum": [
+              "hybrid",
+              "lexical"
+            ],
+            "title": "Retrievalmode",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "matches",
+              "no_fit"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/Notice"
+            },
+            "title": "Warnings",
+            "type": "array"
+          },
+          "window": {
+            "enum": [
+              "today",
+              "tomorrow_morning",
+              "any"
+            ],
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "status",
+          "retrievalMode",
+          "conferenceTime",
+          "conferenceTimeVenue",
+          "observedAt",
+          "window",
+          "candidates",
+          "excluded",
+          "warnings"
+        ],
+        "title": "RecommendationResponse",
         "type": "object"
       },
       "SearchHit": {
@@ -191,11 +659,93 @@
     }
   },
   "info": {
-    "title": "ConferenceOps AI discovery-api",
+    "title": "ConferenceOps AI API",
     "version": "dev"
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/demo/profiles": {
+      "get": {
+        "description": "The personas the profile switcher offers. Public fields only: never preferences or access needs (PRIV-1).",
+        "operationId": "list_demo_profiles_api_v1_demo_profiles_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PersonaList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Demo Profiles",
+        "tags": [
+          "personas"
+        ]
+      }
+    },
+    "/api/v1/recommendations/next": {
+      "post": {
+        "description": "Where should I go next? Talks that haven't started, that pass the persona's hard rules, ranked by her stated\ninterests and history, each with checkable reasons and the published access facts. The persona comes from\nX-Demo-Profile-ID (AUTHZ-1); nothing she typed or set is logged (PRIV-1).",
+        "operationId": "where_next_api_v1_recommendations_next_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-Profile-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Where Next",
+        "tags": [
+          "recommendations"
+        ]
+      }
+    },
     "/api/v1/search": {
       "post": {
         "description": "Which talks match what I'm interested in? The query arrives in the body, never in the URL (PRIV-1).",
