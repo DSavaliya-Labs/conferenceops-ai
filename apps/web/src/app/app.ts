@@ -30,6 +30,7 @@ export const NAV_LINKS: NavLink[] = [
   { path: '/talks', label: 'Find talks', icon: 'search' },
   { path: '/where-next', label: 'Where next', icon: 'compass' },
   { path: '/agenda', label: 'My agenda', icon: 'bookmark' },
+  { path: '/community', label: 'Community', icon: 'user' },
   { path: '/events', label: 'Events', icon: 'calendar' },
   { path: '/accessibility', label: 'Accessibility at the venue', icon: 'access' },
   { path: '/operations', label: 'How this platform runs', icon: 'activity' },

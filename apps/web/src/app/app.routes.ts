@@ -21,6 +21,11 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/agenda').then((m) => m.AgendaPage),
   },
   {
+    path: 'community',
+    title: 'Community · ConferenceOps AI',
+    loadComponent: () => import('./pages/community').then((m) => m.CommunityPage),
+  },
+  {
     path: 'events',
     title: 'Events · ConferenceOps AI',
     loadComponent: () => import('./pages/events').then((m) => m.EventsPage),

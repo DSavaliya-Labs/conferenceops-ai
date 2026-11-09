@@ -25,6 +25,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/community/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Community Feed
+         * @description The newest posts first, each with its replies oldest first. Public fields only.
+         */
+        get: operations["community_feed_api_v1_community_posts_get"];
+        put?: never;
+        /**
+         * Create Post
+         * @description A post, or a reply when `parentId` is set, by the persona in X-Demo-Profile-ID (AUTHZ-1).
+         */
+        post: operations["create_post_api_v1_community_posts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/conferences": {
         parameters: {
             query?: never;
@@ -538,6 +562,44 @@ export interface components {
             /** Startseconds */
             startSeconds: number;
         };
+        /** CommunityFeed */
+        CommunityFeed: {
+            /**
+             * Iscommunitycontent
+             * @description Always true: posts are what personas wrote, never official event information
+             * @default true
+             */
+            isCommunityContent: boolean;
+            /** Posts */
+            posts: components["schemas"]["CommunityPost"][];
+        };
+        /** CommunityPost */
+        CommunityPost: {
+            /**
+             * Author
+             * @description The persona's display name; every persona is fictional
+             */
+            author: string;
+            /**
+             * Authorrole
+             * @description attendee, speaker, partner, organizer or host
+             */
+            authorRole: string;
+            /** Body */
+            body: string;
+            /**
+             * Createdat
+             * Format: date-time
+             * @description UTC instant (TIME-1)
+             */
+            createdAt: string;
+            /** Id */
+            id: string;
+            /** Parentid */
+            parentId?: string | null;
+            /** Replies */
+            replies?: components["schemas"]["CommunityPost"][];
+        };
         /** Cue */
         Cue: {
             /** End */
@@ -625,6 +687,16 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** NewPost */
+        NewPost: {
+            /** Body */
+            body: string;
+            /**
+             * Parentid
+             * @description The post this replies to; replies are one level
+             */
+            parentId?: string | null;
         };
         /** Notice */
         Notice: {
@@ -955,6 +1027,110 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    community_feed_api_v1_community_posts_get: {
+        parameters: {
+            query?: {
+                /** @description How many posts, newest first */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunityFeed"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The community feed isn't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    create_post_api_v1_community_posts_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewPost"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommunityPost"];
+                };
+            };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Profile or parent post not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The community feed isn't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
                 };
             };
         };

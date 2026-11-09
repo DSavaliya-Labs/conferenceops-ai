@@ -427,6 +427,7 @@ def test_the_cli_resets_only_when_asked(monkeypatch):
         return cloudbridge.LoadResult(conference_id=uuid.uuid4())
 
     monkeypatch.setattr(cloudbridge, "load_cloudbridge", load)
+    monkeypatch.setattr(cloudbridge, "seed_posts", lambda db, author_of: 0)
     assert cloudbridge.main([]) == 0
     assert cloudbridge.main(["--reset"]) == 0
     assert calls == [False, True]
