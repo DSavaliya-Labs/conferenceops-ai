@@ -35,7 +35,7 @@ and shows a platform run by an AI operations team.
 | Path | What lives there |
 |---|---|
 | `apps/web/` | Angular app |
-| `apps/web/src/app/dictation-button.ts`, `backend/conferenceops/dictation.py` | Dictation, the spoken half of the Ask bar: the microphone button next to it, and `POST /api/v1/dictation` on core-api (`gpt-transcribe` through the server, never from the browser). The text lands in the Ask bar for review; nothing is searched until the attendee submits. PRIV-1: the audio is never stored, and neither it nor the text reaches logs or spans |
+| `apps/web/src/app/dictation-button.ts`, `backend/conferenceops/dictation.py` | Dictation, the spoken half of the Ask bar: the microphone button next to it, and `POST /api/v1/dictation` on core-api (`gpt-transcribe` through the server, never from the browser). The text lands in the Ask bar for review; nothing is searched until the attendee submits. PRIV-1: nginx streams the audio to core-api, which holds it in memory; it is never stored, and neither it nor the text reaches logs or spans |
 | `backend/conferenceops/` | `core_app`, `discovery_app`, `worker`, shared domain, services and repositories |
 | `backend/migrations/` | Alembic migrations |
 | `backend/tests/` | Unit, integration (real PostgreSQL and Elasticsearch), contract and permission tests |
