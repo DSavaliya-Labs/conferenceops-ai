@@ -1,0 +1,20 @@
+{{- if .Values.public.enabled }}
+{{- if not .Values.public.dnsLabel }}{{ fail "public.dnsLabel is required when public.enabled" }}{{ end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "co.fullname" . }}-public
+  labels:
+    {{- include "co.labels" . | nindent 4 }}
+  annotations:
+    service.beta.kubernetes.io/azure-dns-label-name: {{ .Values.public.dnsLabel | quote }}
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-request-path: /health/ready
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  selector:
+    {{- include "co.selector" . | nindent 4 }}
+    app.kubernetes.io/component: {{ .Values.public.target }}
+  ports:
+    - {name: http, port: 80, targetPort: http}
+{{- end }}

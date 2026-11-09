@@ -1,0 +1,11 @@
+apiVersion: v2
+name: conferenceops
+description: ConferenceOps AI on Kubernetes - the APIs, the worker, PostgreSQL, Elasticsearch (via ECK) and the OpenTelemetry Collector
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: opentelemetry-collector
+    alias: collector
+    version: 0.178.2
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts

@@ -44,8 +44,8 @@ and shows a platform run by an AI operations team.
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
 | `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
-| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean) |
-| `.github/workflows/` | CI (`ci.yml`), deploy, Build log |
+| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh` |
+| `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
 | `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
 
@@ -112,7 +112,12 @@ DATABASE_URL=postgresql+psycopg://... uv run alembic upgrade head   # apply migr
 DATABASE_URL=... uv run pytest -q -m integration                     # integration tests (real PostgreSQL)
 uv run core-api                               # or discovery-api, worker; listens on :8080
 docker build -t conferenceops-backend backend # one image; the Deployment picks the command
+helm dependency build deploy/chart && helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml \
+  --set image.repository=x --set image.tag=y   # render the chart as CI does
 ```
+
+The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com. Every merge to `main` deploys there
+(`deploy.yml`), and each deploy is marked in Dash0 as a `dash0.deployment` event.
 
 ## Web app commands
 
