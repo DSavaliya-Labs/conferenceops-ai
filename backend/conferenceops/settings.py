@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     elasticsearch_password: str | None = None
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
+    openai_transcribe_model: str = "gpt-transcribe"  # dictation.py; whisper-1 and gpt-4o-transcribe are deprecated
     import_interval_seconds: float = 1800.0  # how often the worker re-imports the KubeCon feed
     # Where the worker's loops write their heartbeat files and the liveness probe reads them (worker/liveness.py).
     worker_heartbeat_dir: str = "/tmp/worker-heartbeat"  # noqa: S108 - the chart's emptyDir, private to the pod

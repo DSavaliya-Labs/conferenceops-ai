@@ -14,6 +14,7 @@
     <div class="ask-row">
       <input
         id="ask-input"
+        #askInput
         type="search"
         name="query"
         autocomplete="off"
@@ -22,6 +23,7 @@
         [attr.aria-invalid]="validation() ? 'true' : null"
         [attr.aria-describedby]="validation() ? 'ask-error' : 'ask-hint'"
       />
+      <app-dictation-button (transcribed)="onDictated($event)" />
       <button type="submit" [disabled]="status() === 'searching'">Search</button>
     </div>
     <p id="ask-hint" class="hint">Describe what you want to learn, in your own words.</p>
