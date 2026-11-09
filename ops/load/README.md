@@ -73,8 +73,8 @@ flowchart LR
 - The Job runs in the `conferenceops` namespace and calls `http://conferenceops-discovery` (port 80 to the pods'
   8080). The Service sends each new connection to one of its Ready pods. Because every request opens a new
   connection, the requests spread over all Ready pods, and new replicas take traffic as soon as they are Ready.
-- The public entry point (PR #5) serves core-api, not discovery, and would add the internet path, so it isn't used
-  either.
+- The public entry point serves the web app, whose nginx proxies search to discovery. It would add the internet path
+  and the proxy to what the test measures, so it isn't used either.
 
 A port-forward is fine for checking the script itself (`k6 run -e BASE_URL=http://localhost:8080 ...`), never for a
 capacity measurement.

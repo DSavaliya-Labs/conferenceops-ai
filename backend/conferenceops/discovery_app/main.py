@@ -15,10 +15,12 @@ from conferenceops.indexing import OpenAIEmbedder
 from conferenceops.search import HybridSearch, PostgresSearchSessions, SearchBackend, SearchRequest, SearchResponse
 from conferenceops.settings import settings
 from conferenceops.web import create_app
+from conferenceops.where_next import router as where_next_router
 
 log = logging.getLogger("conferenceops.discovery")
 
 app = create_app("discovery-api")
+app.include_router(where_next_router)  # POST /api/v1/recommendations/next: "where should I go next?"
 add_admission_control(app, settings())  # per-pod limit on /api/v1 requests in progress; 503 above it (PLAN §15.2)
 
 

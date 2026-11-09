@@ -1,6 +1,7 @@
 name: deploy
 
-# Every merge to main: build the image, deploy the chart to AKS, check the public URL, and mark the deploy in Dash0.
+# Every merge to main: build the backend and web images, deploy the chart to AKS, check what the public URL serves (the
+# app, its config and a search through the proxy), and mark the deploy in Dash0.
 # Azure sign-in is OIDC (scripts/azure-setup.sh): the identity trusts only this repository's `aks` environment, and
 # only `main` can deploy to it, so no Azure secret exists to leak or rotate.
 
@@ -34,6 +35,7 @@ jobs:
       id-token: write
     env:
       IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/conferenceops-backend
+      WEB_IMAGE: ${{ vars.ACR_NAME }}.azurecr.io/conferenceops-web
       TAG: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v7
@@ -47,11 +49,13 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push the backend image
+      - name: Build and push the images (backend and web)
         run: |
           az acr login --name "${{ vars.ACR_NAME }}"
           docker build --tag "$IMAGE:$TAG" backend
           docker push "$IMAGE:$TAG"
+          docker build --tag "$WEB_IMAGE:$TAG" apps/web
+          docker push "$WEB_IMAGE:$TAG"
 
       - name: Cluster credentials (Entra ID through kubelogin)
         run: |
@@ -84,14 +88,44 @@ jobs:
         run: |
           helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
           helm dependency build deploy/chart
+          # Server-side apply, and the chart wins conflicts on the fields it declares. The ECK operator writes the
+          # whole Elasticsearch object back with an update (it adds an empty podTemplate.metadata), which makes it the
+          # owner of .spec.nodeSets. Without --force-conflicts, every upgrade after the first fails on that field.
           helm upgrade --install "$RELEASE" deploy/chart --namespace "$NAMESPACE" --reset-values \
             -f deploy/env/aks/values.yaml --set image.repository="$IMAGE" --set image.tag="$TAG" \
-            --wait --timeout 20m
+            --set web.image.repository="$WEB_IMAGE" --set web.image.tag="$TAG" \
+            --server-side=true --force-conflicts --wait --timeout 20m
 
+      # The public LoadBalancer sends traffic to the web pods. Until Azure's health probe catches up with a rollout, it
+      # can pass a new connection to a node without a web pod, where it is dropped. So every request has a time limit,
+      # and the checks are retried together for up to five minutes.
       - name: The public URL answers
         run: |
-          for _ in $(seq 1 60); do curl -sf "$PUBLIC_URL/health/ready" >/dev/null && break; sleep 5; done
-          curl -sf "$PUBLIC_URL/health/ready"
+          serves() {
+            local page config search
+            if ! curl -sf --max-time 10 "$PUBLIC_URL/health/ready" >/dev/null; then
+              echo "/health/ready: not 200"; return 1
+            fi
+            if ! page=$(curl -sf --max-time 10 "$PUBLIC_URL/") || [[ $page != *"<app-root"* ]]; then
+              echo "/: not the app"; return 1
+            fi
+            if ! config=$(curl -sf --max-time 10 "$PUBLIC_URL/config.json") \
+              || ! jq -e '.dash0Dataset == "conferenceops"' <<<"$config" >/dev/null; then
+              echo "/config.json: not the conferenceops dataset"; return 1
+            fi
+            # Browser to nginx to discovery to Elasticsearch: a search through the public URL finds real sessions.
+            if ! search=$(curl -sf --max-time 20 -X POST -H 'Content-Type: application/json' \
+                -d '{"query":"observability"}' "$PUBLIC_URL/api/v1/search") \
+              || ! jq -e '.results | length >= 1' <<<"$search" >/dev/null; then
+              echo "/api/v1/search: no 200 with results"; return 1
+            fi
+            echo "$PUBLIC_URL serves the app, its config, and $(jq '.results | length' <<<"$search") search results"
+          }
+          deadline=$((SECONDS + 300))
+          until serves; do
+            if ((SECONDS > deadline)); then echo "::error::$PUBLIC_URL doesn't serve the app, its config and search"; exit 1; fi
+            sleep 5
+          done
 
       - name: Install the Dash0 CLI
         uses: dash0hq/dash0-cli/.github/actions/setup@v1.1.0
@@ -102,7 +136,7 @@ jobs:
           DASH0_AUTH_TOKEN: ${{ secrets.DASH0_INGEST_TOKEN }}
           DASH0_DATASET: conferenceops
         run: |
-          for service in core-api discovery-api worker; do
+          for service in web core-api discovery-api worker; do
             dash0 logs send "Deployed $TAG" --event-name dash0.deployment --severity-number 9 \
               --resource-attribute "service.name=$service" \
               --resource-attribute "service.namespace=conferenceops" \

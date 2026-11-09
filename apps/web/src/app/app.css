@@ -70,6 +70,40 @@ h1 {
   color: #3f3f50;
   margin: 0.25rem 0 0;
 }
+
+.where-next {
+  margin-top: 1rem;
+}
+.where-next-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.where-next label {
+  font-weight: 600;
+}
+.where-next select {
+  font-size: 1rem;
+  padding: 0.5rem;
+  border: 2px solid #3f3f50;
+  border-radius: 0.25rem;
+}
+.where-next button {
+  font-size: 1rem;
+  padding: 0.6rem 1.2rem;
+  background: #ffffff;
+  color: #1d4ed8;
+  border: 2px solid #1d4ed8;
+  border-radius: 0.25rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.where-next button:disabled {
+  color: #5b5b6e;
+  border-color: #5b5b6e;
+  cursor: progress;
+}
 .error {
   color: #a4161a;
   font-weight: 600;
