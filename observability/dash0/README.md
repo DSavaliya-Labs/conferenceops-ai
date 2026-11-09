@@ -134,10 +134,11 @@ Python Elasticsearch client sets the stable `db.system.name` and `http.request.m
 
 Checked on the live `conferenceops` data on Nov 9. Until these assets were first applied (about 20:50 UTC), the
 dataset had upgrades off: discovery-api's server spans carried `http_status_code` and `http_method`, and a matcher on
-`http_response_status_code` counted nothing. Since that apply, new server spans carry `http_response_status_code`
-and `http_request_method` instead: the upgrade renames the old keys rather than copying them. **Discovery is
-rejecting searches** counts a 5xx under either status-code label, so it works in both states. The other queries use
-the stable names and need `dataset.yaml` applied.
+`http_response_status_code` counted nothing. The new setting took a minute or two to reach ingestion: spans at
+20:51:51 UTC still had the old keys, and from 20:53:44 UTC on they carry `http_response_status_code` and
+`http_request_method` instead (the upgrade renames the old keys rather than copying them). **Discovery is rejecting
+searches** counts a 5xx under either status-code label, so it works in both states and across the switch. The other
+queries use the stable names and need `dataset.yaml` applied.
 
 Admission rejections carry their own span attribute, `conferenceops.error.code` = `DISCOVERY_CAPACITY_EXHAUSTED`
 (label `conferenceops_error_code` on `dash0.spans`; Dash0 turns span attributes into labels, as `http_user_agent`
