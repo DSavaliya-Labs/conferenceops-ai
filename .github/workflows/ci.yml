@@ -134,10 +134,9 @@ jobs:
             | kubeconform -strict -summary -ignore-missing-schemas
       - name: Discovery replicas outside the bounds must not render (OPS-1)
         run: |
-          if helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml --set image.repository=x \
-               --set image.tag=ci --set components.discovery.replicas=9 >/dev/null 2>&1; then
-            echo "::error::a discovery replica count outside the bounds rendered"; exit 1
-          fi
+          out=$(helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml --set image.repository=x \
+            --set image.tag=ci --set components.discovery.replicas=9 2>&1) && { echo "::error::rendered"; exit 1; }
+          grep -q 'outside 1..5 (OPS-1)' <<<"$out" || { echo "::error::failed for another reason: $out"; exit 1; }
       - name: A latest image tag must not render (K8S-1)
         run: |
           if helm template conferenceops deploy/chart --set image.repository=x --set image.tag=latest >/dev/null 2>&1; then

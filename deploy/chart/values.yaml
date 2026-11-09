@@ -39,7 +39,7 @@ public:
   target: core  # the component that receives public traffic
 
 postgres:
-  image: postgres:17
+  image: postgres:17.6
   storage: 5Gi
   resources:
     requests: {cpu: 250m, memory: 512Mi}
