@@ -100,6 +100,16 @@ Review findings cite these IDs.
   - Merge commits only; the branch is deleted after merge.
   - After a stacked PR merges, check the next PR's base before deleting any branch.
 
+## Commands
+
+```bash
+cd backend && uv sync --python 3.12          # install (Python 3.12, locked by uv.lock)
+uv run ruff check . && uv run ruff format --check .
+uv run pytest -q                              # unit tests; no PostgreSQL, Elasticsearch or OpenAI needed
+uv run core-api                               # or discovery-api, worker; listens on :8080
+docker build -t conferenceops-backend backend # one image; the Deployment picks the command
+```
+
 ## Never
 
 - Commit or print secrets.

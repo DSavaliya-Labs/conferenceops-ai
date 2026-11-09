@@ -34,13 +34,34 @@ jobs:
         run: |
           mapfile -t scripts < <(git ls-files '*.sh')
           if ((${#scripts[@]})); then shellcheck "${scripts[@]}"; else echo "No shell scripts."; fi
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.13.7/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Lint and format-check Python (ruff)
+        working-directory: backend
+        run: |
+          uv sync --frozen --python 3.12
+          uv run ruff check .
+          uv run ruff format --check .
 
   domain-tests:
     name: domain-tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - run: echo "::notice title=Not applicable yet::No backend yet. The services PR makes this check real."
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/0.13.7/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Unit tests (no PostgreSQL, Elasticsearch or OpenAI)
+        working-directory: backend
+        run: |
+          uv sync --frozen --python 3.12
+          uv run pytest -q
 
   data-integration:
     name: data-integration
@@ -90,4 +111,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - run: echo "::notice title=Not applicable yet::No container images yet. The services PR makes this check real."
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the backend image (pushed by the deploy workflow, not here)
+        run: docker build --tag "conferenceops-backend:${GITHUB_SHA}" backend
+      - name: The image runs as non-root and answers its health check
+        run: |
+          docker run --rm -d --name core -p 8080:8080 "conferenceops-backend:${GITHUB_SHA}"
+          for _ in $(seq 1 20); do curl -sf localhost:8080/health/ready && break; sleep 1; done
+          test "$(docker exec core id -u)" = 10001
+          docker rm -f core
