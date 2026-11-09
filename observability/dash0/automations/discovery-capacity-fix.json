@@ -1,0 +1,43 @@
+{
+  "kind": "Dash0AgenticWorkflow",
+  "metadata": {
+    "name": "ConferenceOps: fix discovery capacity",
+    "labels": {
+      "dash0.com/origin": "dash0-cli_conferenceops-discovery-capacity-fix"
+    }
+  },
+  "spec": {
+    "enabled": true,
+    "display": {
+      "name": "ConferenceOps: fix discovery capacity",
+      "description": "Runs when the check \"Discovery is rejecting searches\" fails. Investigates discovery-api with telemetry and, only when discovery capacity is the bottleneck, opens a pull request in DSavaliya-Labs/conferenceops-ai that changes only the discovery replicas or resources in deploy/env/aks/values.yaml (OPS-1). Otherwise it reports the mismatch for a human. Managed as code: observability/dash0/automations/ in that repository; scripts/dash0-apply.sh inserts the prompt from discovery-capacity-fix.prompt.md."
+    },
+    "triggers": [
+      {
+        "kind": "failed_check.new",
+        "spec": {
+          "checkRuleIDs": ["7f910f6b-1c6a-461f-9018-fbfa66498555"]
+        }
+      }
+    ],
+    "modelSelection": {
+      "model": "class:advanced",
+      "reasoningEffort": "high"
+    },
+    "guardrails": {
+      "timeout": "15m",
+      "concurrency": {
+        "policy": "skip",
+        "maxParallel": 1
+      },
+      "creditBudgetWindow": {
+        "credits": 50,
+        "window": "1d",
+        "warningThreshold": 75
+      }
+    },
+    "sandbox": {
+      "networkLevel": "trusted_only"
+    }
+  }
+}

@@ -108,7 +108,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - run: echo "::notice title=Not applicable yet::No web app yet. The app shell PR makes this check real."
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install
+        working-directory: apps/web
+        run: npm ci
+      - name: Unit and accessibility tests (Vitest)
+        working-directory: apps/web
+        run: npx ng test --watch=false
+      - name: Production build
+        working-directory: apps/web
+        run: npx ng build
 
   helm-policy:
     name: helm-policy
@@ -175,3 +191,17 @@ jobs:
           curl -sf localhost:8080/health/ready || { docker logs core; exit 1; }
           test "$(docker exec core id -u)" = 10001
           docker rm -f core
+      - name: Build the web image
+        run: docker build --tag "conferenceops-web:${GITHUB_SHA}" apps/web
+      - name: The web image runs as non-root and serves the app and its config
+        run: |
+          docker run --rm -d --name web -p 8081:8080 -e CORE_UPSTREAM=core.invalid:80 -e DISCOVERY_UPSTREAM=discovery.invalid:80 "conferenceops-web:${GITHUB_SHA}"
+          for _ in $(seq 1 20); do curl -sf localhost:8081/health/ready && break; sleep 1; done
+          curl -sf localhost:8081/health/ready || { docker logs web; exit 1; }
+          curl -sf localhost:8081/ | grep -q "<app-root"
+          curl -sf localhost:8081/config.json | python3 -c "import json,sys; c=json.load(sys.stdin); assert c['dash0Dataset']=='conferenceops'"
+          test "$(docker exec web id -u)" != 0
+          # An API name that doesn't resolve fails only that request (502); nginx keeps serving.
+          test "$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 -X POST localhost:8081/api/v1/search)" = 502 || { docker logs web; exit 1; }
+          curl -sf localhost:8081/health/ready
+          docker rm -f web

@@ -42,10 +42,12 @@ and shows a platform run by an AI operations team.
 | `seed/` | The CloudBridge Summit fixture and its media and caption files |
 | `deploy/chart/` | Helm chart |
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
+| `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
 | `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh` |
 | `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
+| `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
 
 When you add a module, a route or a top-level directory, add it here in the same pull request.
 
@@ -116,6 +118,15 @@ helm dependency build deploy/chart && helm template conferenceops deploy/chart -
 
 The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com. Every merge to `main` deploys there
 (`deploy.yml`), and each deploy is marked in Dash0 as a `dash0.deployment` event.
+
+## Web app commands
+
+```bash
+cd apps/web && npm ci
+npx ng test --watch=false   # unit and accessibility tests (Vitest)
+npx ng build                # production build into dist/web/browser
+docker build -t conferenceops-web apps/web   # nginx (unprivileged, :8080) serving the app, /config.json and the /api proxy
+```
 
 ## Never
 
