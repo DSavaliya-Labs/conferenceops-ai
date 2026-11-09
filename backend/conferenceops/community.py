@@ -183,8 +183,10 @@ def seed_posts(db: DbSession, author_of: Callable[[str], uuid.UUID]) -> int:
                 created_at=SEED_ANCHOR - timedelta(minutes=minutes),
             )
             .on_conflict_do_nothing(index_elements=["id"])
+            .returning(Post.id)
         )
-        added += created.rowcount or 0
+        if created.scalar_one_or_none() is not None:
+            added += 1
     return added
 
 
