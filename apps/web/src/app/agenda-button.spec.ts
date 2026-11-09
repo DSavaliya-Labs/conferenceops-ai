@@ -237,4 +237,21 @@ describe('Quick add to My Agenda', () => {
     fixture.detectChanges();
     expect(button().getAttribute('aria-pressed')).toBe('false');
   });
+
+  it('keeps the confirmed write and the list when the background re-read fails', () => {
+    const { fixture, http, button, agenda } = setUp();
+    button().click();
+    fixture.detectChanges();
+    http
+      .expectOne(`${AGENDA_URL}/${TALK.id}`)
+      .flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+    http
+      .expectOne(AGENDA_URL)
+      .flush({ detail: 'down' }, { status: 503, statusText: 'Service Unavailable' });
+    fixture.detectChanges();
+    expect(button().getAttribute('aria-pressed')).toBe('true'); // the write happened
+    expect(agenda.status()).toBe('done'); // the list on screen stays, no error callout
+    expect(agenda.agenda()).not.toBeNull();
+  });
 });

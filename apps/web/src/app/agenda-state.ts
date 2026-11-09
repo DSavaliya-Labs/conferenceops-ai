@@ -78,6 +78,11 @@ export class AgendaService {
         this.status.set('done');
       },
       error: (error: unknown) => {
+        if (keep) {
+          // A background re-read after a confirmed write: the write happened, so the card stays as it is and the
+          // list on screen stays; the next load or write re-reads again.
+          return;
+        }
         this.agenda.set(null);
         this.pending.set(new Map());
         this.status.set(

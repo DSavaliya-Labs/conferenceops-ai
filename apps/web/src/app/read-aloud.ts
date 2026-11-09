@@ -16,28 +16,57 @@ export function sessionSpeech(s: SessionSummary): string {
   return parts.filter(Boolean).join('. ') + '.';
 }
 
+interface VoiceLike {
+  lang: string;
+  localService: boolean;
+  name: string;
+}
+
+interface UtteranceLike {
+  lang: string;
+  voice: VoiceLike | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
 type Synth = {
   speak(utterance: unknown): void;
   cancel(): void;
+  getVoices(): VoiceLike[];
+  addEventListener?(type: string, listener: () => void): void;
 };
 
-/** Reads a card aloud with the browser's own speech synthesis (Web Speech API): the text never leaves the device,
- *  nothing is recorded, and one card speaks at a time. Unsupported browsers get a disabled button that says so. */
+/** Reads a card aloud with an on-device voice of the browser's speech synthesis (Web Speech API), so the text never
+ *  leaves the device (PRIV-1: a card can carry a persona's access statements). Browsers also offer cloud voices,
+ *  whose synthesis runs on a vendor's servers; those are never used. Without an on-device voice the feature is
+ *  unavailable and the button says so. One card speaks at a time. */
 @Service()
 export class ReadAloudService {
-  readonly supported = typeof window !== 'undefined' && 'speechSynthesis' in window;
+  private readonly synth: Synth | null =
+    typeof window !== 'undefined' && 'speechSynthesis' in window
+      ? (window as unknown as { speechSynthesis: Synth }).speechSynthesis
+      : null;
+  private readonly voices = signal<VoiceLike[]>(this.synth?.getVoices?.() ?? []);
+  /** The on-device voice to use: English first, else any local one; null when the browser has none. */
+  readonly localVoice = computed<VoiceLike | null>(() => {
+    const local = this.voices().filter((v) => v.localService);
+    return local.find((v) => v.lang.toLowerCase().startsWith('en')) ?? local[0] ?? null;
+  });
+  readonly supported = computed(() => this.synth !== null && this.localVoice() !== null);
   /** The card being read, or null. */
   readonly speaking = signal<string | null>(null);
 
-  private get synth(): Synth | null {
-    return this.supported
-      ? (window as unknown as { speechSynthesis: Synth }).speechSynthesis
-      : null;
+  constructor() {
+    // Chrome loads its voice list asynchronously and says so with this event.
+    this.synth?.addEventListener?.('voiceschanged', () =>
+      this.voices.set(this.synth?.getVoices() ?? []),
+    );
   }
 
   toggle(id: string, text: string): void {
     const synth = this.synth;
-    if (!synth) {
+    const voice = this.localVoice();
+    if (!synth || !voice) {
       return;
     }
     if (this.speaking() === id) {
@@ -49,7 +78,8 @@ export class ReadAloudService {
       window as unknown as { SpeechSynthesisUtterance: new (t: string) => UtteranceLike }
     ).SpeechSynthesisUtterance;
     const utterance = new Utterance(text);
-    utterance.lang = 'en-US';
+    utterance.voice = voice;
+    utterance.lang = voice.lang;
     utterance.onend = () => this.speaking.update((current) => (current === id ? null : current));
     utterance.onerror = utterance.onend;
     this.speaking.set(id);
@@ -62,12 +92,6 @@ export class ReadAloudService {
   }
 }
 
-interface UtteranceLike {
-  lang: string;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-}
-
 /** "Read aloud" / "Stop reading" for one card. `aria-pressed` carries the state; the label names what is read. */
 @Component({
   selector: 'app-read-aloud-button',
@@ -77,17 +101,17 @@ interface UtteranceLike {
       type="button"
       class="btn btn-outline read-aloud"
       [attr.aria-pressed]="on()"
-      [attr.aria-describedby]="reader.supported ? null : hintId()"
-      [disabled]="!reader.supported"
+      [attr.aria-describedby]="reader.supported() ? null : hintId()"
+      [disabled]="!reader.supported()"
       (click)="reader.toggle(id(), text())"
     >
       <app-icon [name]="on() ? 'close' : 'activity'" [size]="16" />
       {{ on() ? 'Stop reading' : 'Read aloud' }}
       <span class="visually-hidden">: {{ label() }}</span>
     </button>
-    @if (!reader.supported) {
+    @if (!reader.supported()) {
       <span class="visually-hidden" [id]="hintId()">
-        Read aloud isn't available in this browser.
+        Read aloud isn't available in this browser: it needs an on-device voice.
       </span>
     }
   `,

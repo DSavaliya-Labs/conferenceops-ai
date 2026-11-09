@@ -6,14 +6,20 @@ import { text } from './test-support';
 
 class FakeUtterance {
   lang = '';
+  voice: unknown = null;
   onend: (() => void) | null = null;
   onerror: (() => void) | null = null;
   constructor(readonly text: string) {}
 }
 
-function fakeSynth() {
+const LOCAL = { lang: 'en-US', localService: true, name: 'Samantha' };
+const CLOUD = { lang: 'en-US', localService: false, name: 'Google US English' };
+
+function fakeSynth(initial: unknown[] = [CLOUD, LOCAL]) {
+  let voices = initial;
   const spoken: FakeUtterance[] = [];
   let cancels = 0;
+  const listeners: (() => void)[] = [];
   (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance =
     FakeUtterance;
   (window as unknown as { speechSynthesis: unknown }).speechSynthesis = {
@@ -21,8 +27,17 @@ function fakeSynth() {
     cancel: () => {
       cancels += 1;
     },
+    getVoices: () => voices,
+    addEventListener: (_type: string, listener: () => void) => listeners.push(listener),
   };
-  return { spoken, cancels: () => cancels };
+  return {
+    spoken,
+    cancels: () => cancels,
+    addVoices: (more: unknown[]) => {
+      voices = [...voices, ...more];
+      listeners.forEach((l) => l());
+    },
+  };
 }
 
 @Component({
@@ -67,6 +82,7 @@ describe('Read aloud', () => {
     fixture.detectChanges();
     expect(synth.spoken.map((u) => u.text)).toEqual(['First talk. Tuesday 10:30.']);
     expect(synth.spoken[0].lang).toBe('en-US');
+    expect(synth.spoken[0].voice).toBe(LOCAL); // never the cloud voice
     expect(buttons()[0].getAttribute('aria-pressed')).toBe('true');
     expect(text(buttons()[0])).toContain('Stop reading');
     buttons()[0].click();
@@ -103,7 +119,24 @@ describe('Read aloud', () => {
       `#${buttons()[0].getAttribute('aria-describedby')}`,
     );
     expect(text(hint)).toContain("Read aloud isn't available in this browser");
-    expect(TestBed.inject(ReadAloudService).supported).toBe(false);
+    expect(TestBed.inject(ReadAloudService).supported()).toBe(false);
+  });
+
+  it('is unavailable when the browser offers only cloud voices, and becomes available when a local voice loads', () => {
+    const synth = fakeSynth([CLOUD]);
+    const { fixture, buttons } = render();
+    expect(buttons()[0].disabled).toBe(true);
+    expect(
+      text(
+        fixture.nativeElement.querySelector(`#${buttons()[0].getAttribute('aria-describedby')}`),
+      ),
+    ).toContain('on-device voice');
+    synth.addVoices([LOCAL]);
+    fixture.detectChanges();
+    expect(buttons()[0].disabled).toBe(false);
+    buttons()[0].click();
+    fixture.detectChanges();
+    expect(synth.spoken[0].voice).toBe(LOCAL);
   });
 
   it('reads a talk card in order: title, event, venue time, room, level and topics', () => {

@@ -136,4 +136,28 @@ describe('My agenda', () => {
       "This persona isn't on the server",
     );
   });
+
+  it('removing a talk from the page keeps focus and the announcement (A11Y-1)', async () => {
+    const view = await start(AISHA.id);
+    view.http.expectOne(AGENDA_URL).flush(AGENDA);
+    await settle(view);
+    const toggle = view.el.querySelector<HTMLButtonElement>(
+      '.bookmarked app-agenda-button button',
+    )!;
+    expect(text(toggle)).toContain('In My Agenda');
+    toggle.focus();
+    toggle.click();
+    await settle(view);
+    const del = view.http.expectOne(`${AGENDA_URL}/k-1`);
+    expect(del.request.method).toBe('DELETE');
+    del.flush(null, { status: 204, statusText: 'No Content' });
+    await settle(view);
+    view.http.expectOne(AGENDA_URL).flush({ ...AGENDA, bookmarked: [] });
+    await settle(view);
+    expect(view.el.querySelector('.bookmarked app-agenda-button')).toBeNull();
+    expect(document.activeElement).toBe(view.el.querySelector('#bookmarked-heading'));
+    expect(texts(view.el, '[role="status"]').join(' ')).toContain(
+      'Removed “Observability for AI SRE Teams” from My Agenda.',
+    );
+  });
 });

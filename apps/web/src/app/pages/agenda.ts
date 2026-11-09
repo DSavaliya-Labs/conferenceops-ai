@@ -1,4 +1,11 @@
-import { Component, computed, inject } from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  afterRenderEffect,
+  computed,
+  inject,
+  viewChild,
+} from '@angular/core';
 
 import { AgendaService } from '../agenda-state';
 import { Icon } from '../icons';
@@ -22,6 +29,7 @@ import { SessionCard, SessionSummary } from '../session-card';
       </header>
 
       <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
+      <p class="visually-hidden" role="status" aria-live="polite">{{ shared.announcement() }}</p>
 
       @switch (status()) {
         @case ('none') {
@@ -61,7 +69,7 @@ import { SessionCard, SessionSummary } from '../session-card';
         @case ('done') {
           @if (agenda(); as a) {
             <section class="group" aria-labelledby="bookmarked-heading">
-              <h2 id="bookmarked-heading">
+              <h2 id="bookmarked-heading" tabindex="-1" #bookmarkedHeading>
                 Bookmarked <span class="count">{{ a.bookmarked.length }}</span>
               </h2>
               @if (a.bookmarked.length === 0) {
@@ -117,7 +125,8 @@ import { SessionCard, SessionSummary } from '../session-card';
 })
 export class AgendaPage {
   protected readonly personas = inject(PersonaService);
-  private readonly shared = inject(AgendaService);
+  protected readonly shared = inject(AgendaService);
+  private readonly bookmarkedHeading = viewChild<ElementRef<HTMLElement>>('bookmarkedHeading');
 
   /** One load per persona, shared with the quick-add buttons on every card (AgendaService). */
   protected readonly status = this.shared.status;
@@ -136,6 +145,18 @@ export class AgendaPage {
         return '';
     }
   });
+
+  constructor() {
+    // When a removal destroys the focused card, focus moves to the Bookmarked heading instead of falling to the
+    // body, and the page-level status line above announces the change (A11Y-1).
+    afterRenderEffect(() => {
+      this.agenda();
+      const heading = this.bookmarkedHeading()?.nativeElement;
+      if (heading && typeof document !== 'undefined' && document.activeElement === document.body) {
+        heading.focus();
+      }
+    });
+  }
 
   protected load(): void {
     this.shared.refresh();
