@@ -11,7 +11,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 import openai
-from elasticsearch import BadRequestError, ConflictError, Elasticsearch, NotFoundError
+from elasticsearch import BadRequestError, ConflictError, ConnectionTimeout, Elasticsearch, NotFoundError
+from elasticsearch import ConnectionError as EsConnectionError
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -164,7 +165,10 @@ def process_outbox(
 
     Jobs are leased with SKIP LOCKED, so two workers never take the same job. Only session jobs are leased: other
     entity types are left for their own consumer. A failing job backs off on its own. When the model is down, the
-    batch's index jobs back off, but its delete jobs still run: they need no embedding."""
+    batch's index jobs back off, but its delete jobs still run: they need no embedding. When Elasticsearch stops
+    answering (a connection error or a timeout), the job that found out and the rest of the batch back off without
+    another call: a pass then costs one timeout, not one per job, and stays inside the worker's iteration budget
+    (worker/main.py), where one timeout per job would get it restarted by the liveness probe."""
     jobs = db.scalars(
         select(OutboxJob)
         .where(
@@ -185,11 +189,15 @@ def process_outbox(
     vectors = _embed(embedder, list(sessions.values()))
 
     indexed = 0
+    outage: Exception | None = None  # set once Elasticsearch stops answering: the rest of the batch backs off unasked
     for job in jobs:
         session = sessions.get(job.entity_id) if job.kind == "index" else None
         vector = vectors[session.id] if session is not None else None
         if isinstance(vector, Exception):  # the model failed, or rejected this session's text
             _fail(job, vector, now)
+            continue
+        if outage is not None:
+            _fail(job, outage, now)
             continue
         try:
             if job.kind == "delete":
@@ -214,6 +222,12 @@ def process_outbox(
             job.status = OutboxStatus.DONE
         except ConflictError:
             job.status = OutboxStatus.DONE  # a newer revision is already indexed
+        except (EsConnectionError, ConnectionTimeout) as exc:
+            # Elasticsearch didn't answer, after waiting out the request timeout (30 s in the worker), so it won't
+            # answer the next job either: the rest of the batch backs off with this error, unasked, as the batch's
+            # index jobs do when the model is down. An error it does answer (a 429 or a 503) comes back at once.
+            outage = exc
+            _fail(job, exc, now)
         except Exception as exc:  # noqa: BLE001 - one bad job must not stop the batch
             _fail(job, exc, now)
     return indexed
