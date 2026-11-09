@@ -110,6 +110,15 @@ uv run core-api                               # or discovery-api, worker; listen
 docker build -t conferenceops-backend backend # one image; the Deployment picks the command
 ```
 
+## Web app commands
+
+```bash
+cd apps/web && npm ci
+npx ng test --watch=false   # unit and accessibility tests (Vitest)
+npx ng build                # production build into dist/web/browser
+docker build -t conferenceops-web apps/web   # nginx (unprivileged, :8080) serving the app, /config.json and the /api proxy
+```
+
 ## Never
 
 - Commit or print secrets.
