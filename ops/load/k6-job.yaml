@@ -1,0 +1,55 @@
+# The search capacity test as a Kubernetes Job (PLAN.md §15.2). Run it with scripts/load-run.sh: it creates the
+# ConfigMap `conferenceops-load` from ops/load/, sets RATE and DURATION below, applies this Job and prints its logs.
+# k6 calls the discovery ClusterIP Service, which spreads each new connection across the Ready pods. Never point a
+# capacity test at a port-forward: it pins every request to one pod.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: conferenceops-load
+  namespace: conferenceops
+  labels:
+    app.kubernetes.io/name: conferenceops-load
+    app.kubernetes.io/part-of: conferenceops
+    app.kubernetes.io/component: load-test
+spec:
+  backoffLimit: 0                 # never rerun: a second attempt would change the offered load
+  ttlSecondsAfterFinished: 21600  # keep the finished pod and its logs for 6 hours
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: conferenceops-load
+        app.kubernetes.io/part-of: conferenceops
+        app.kubernetes.io/component: load-test
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345  # the image's own k6 user
+        runAsGroup: 12345
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: k6
+          image: grafana/k6:2.3.0
+          args: [run, --quiet, --no-usage-report, /scripts/search-peak.js]
+          env:
+            - {name: BASE_URL, value: "http://conferenceops-discovery"}
+            - {name: RATE, value: "8"}
+            - {name: DURATION, value: "5m"}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            # k6 2.3.0 on the Mac peaked at 46 MiB with 16 VUs, 66 MiB with 96 and 110 MiB with 300.
+            requests: {cpu: 250m, memory: 128Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: scripts
+          configMap: {name: conferenceops-load}
+        - name: tmp
+          emptyDir: {sizeLimit: 64Mi}
