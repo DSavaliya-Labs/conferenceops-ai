@@ -1,5 +1,6 @@
 import { Component, input } from '@angular/core';
 
+import { AgendaButton } from './agenda-button';
 import { Icon } from './icons';
 
 /** The event label every card carries: KubeCon is real and comes from the official schedule; CloudBridge Summit is
@@ -33,7 +34,7 @@ export interface SessionSummary {
  *  level and topics. The room comes from the schedule or says it isn't listed; nothing is guessed. */
 @Component({
   selector: 'app-session-card',
-  imports: [EventBadge, Icon],
+  imports: [AgendaButton, EventBadge, Icon],
   template: `
     <article class="card session" [attr.aria-labelledby]="'session-' + session().id">
       <div class="head">
@@ -66,6 +67,9 @@ export interface SessionSummary {
           }
         </ul>
       }
+      <p class="actions">
+        <app-agenda-button [sessionId]="session().id" [title]="session().title" />
+      </p>
       <ng-content />
     </article>
   `,

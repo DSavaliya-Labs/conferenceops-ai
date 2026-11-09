@@ -1,13 +1,10 @@
-import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, effect, inject, signal, untracked } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Component, computed, inject } from '@angular/core';
 
+import { AgendaService } from '../agenda-state';
 import { Icon } from '../icons';
 import { PersonaService } from '../personas';
-import { AgendaEntry, AgendaResponse, PortalService } from '../portal';
+import { AgendaEntry } from '../portal';
 import { SessionCard, SessionSummary } from '../session-card';
-
-type AgendaStatus = 'none' | 'loading' | 'done' | 'error' | 'missing';
 
 /** My agenda: the persona's bookmarks and the talks she attended, from core-api behind X-Demo-Profile-ID
  *  (AUTHZ-1). Switching persona reloads; nothing from the last persona lingers. */
@@ -120,11 +117,11 @@ type AgendaStatus = 'none' | 'loading' | 'done' | 'error' | 'missing';
 })
 export class AgendaPage {
   protected readonly personas = inject(PersonaService);
-  private readonly portal = inject(PortalService);
-  private request?: Subscription;
+  private readonly shared = inject(AgendaService);
 
-  protected readonly status = signal<AgendaStatus>('none');
-  protected readonly agenda = signal<AgendaResponse | null>(null);
+  /** One load per persona, shared with the quick-add buttons on every card (AgendaService). */
+  protected readonly status = this.shared.status;
+  protected readonly agenda = this.shared.agenda;
 
   protected readonly announcement = computed(() => {
     const a = this.agenda();
@@ -140,35 +137,8 @@ export class AgendaPage {
     }
   });
 
-  constructor() {
-    // A persona switch reloads; the last persona's agenda is dropped first (PLAN §4.1).
-    effect(() => {
-      const id = this.personas.selectedId();
-      untracked(() => this.load(id));
-    });
-    inject(DestroyRef).onDestroy(() => this.request?.unsubscribe());
-  }
-
-  protected load(id: string = this.personas.selectedId()): void {
-    this.request?.unsubscribe();
-    this.agenda.set(null);
-    if (!id) {
-      this.status.set('none');
-      return;
-    }
-    this.status.set('loading');
-    this.request = this.portal.agenda(id).subscribe({
-      next: (agenda) => {
-        this.agenda.set(agenda);
-        this.status.set('done');
-      },
-      error: (error: unknown) => {
-        this.agenda.set(null);
-        this.status.set(
-          error instanceof HttpErrorResponse && error.status === 404 ? 'missing' : 'error',
-        );
-      },
-    });
+  protected load(): void {
+    this.shared.refresh();
   }
 
   protected summary(entry: AgendaEntry): SessionSummary {

@@ -1,3 +1,4 @@
+import { AgendaButton } from './agenda-button';
 import { Component, computed, input } from '@angular/core';
 
 import { Icon } from './icons';
@@ -26,7 +27,7 @@ const EXCLUSION_LABELS: Record<string, string> = {
  *  each with its source link (ACCESS-1). Nothing here ever says step-free: the server sends only "not published". */
 @Component({
   selector: 'app-where-next-cards',
-  imports: [EventBadge, Icon],
+  imports: [AgendaButton, EventBadge, Icon],
   template: `
     @if (response(); as r) {
       <section class="where-next-results" aria-labelledby="where-next-results-heading">
@@ -143,6 +144,12 @@ const EXCLUSION_LABELS: Record<string, string> = {
                       </li>
                     }
                   </ul>
+                  <p class="actions">
+                    <app-agenda-button
+                      [sessionId]="candidate.sessionId"
+                      [title]="candidate.title"
+                    />
+                  </p>
                 </article>
               </li>
             }

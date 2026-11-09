@@ -128,6 +128,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/agenda/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add To Agenda
+         * @description Bookmarks a talk for the persona in X-Demo-Profile-ID (AUTHZ-1). Idempotent: bookmarking twice is one
+         *     bookmark. A bookmark is a personal plan; it never reserves a seat.
+         */
+        put: operations["add_to_agenda_api_v1_me_agenda__session_id__put"];
+        post?: never;
+        /**
+         * Remove From Agenda
+         * @description Removes a bookmark for the persona in X-Demo-Profile-ID (AUTHZ-1). Idempotent.
+         */
+        delete: operations["remove_from_agenda_api_v1_me_agenda__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ops/transcripts/{session_id}/publish": {
         parameters: {
             query?: never;
@@ -1134,6 +1159,126 @@ export interface operations {
                 };
             };
             /** @description No selectable persona has that ID */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The agenda isn't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    add_to_agenda_api_v1_me_agenda__session_id__put: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
+            };
+            path: {
+                /** @description The session to bookmark */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Profile or session not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description The agenda isn't available right now */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+        };
+    };
+    remove_from_agenda_api_v1_me_agenda__session_id__delete: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1). */
+                "X-Demo-Profile-ID": string;
+            };
+            path: {
+                /** @description The session to remove from the agenda */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No persona chosen: X-Demo-Profile-ID is missing or empty */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorDetail"];
+                };
+            };
+            /** @description Profile or session not found */
             404: {
                 headers: {
                     [name: string]: unknown;

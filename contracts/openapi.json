@@ -1701,6 +1701,162 @@
         ]
       }
     },
+    "/api/v1/me/agenda/{session_id}": {
+      "delete": {
+        "description": "Removes a bookmark for the persona in X-Demo-Profile-ID (AUTHZ-1). Idempotent.",
+        "operationId": "remove_from_agenda_api_v1_me_agenda__session_id__delete",
+        "parameters": [
+          {
+            "description": "The session to remove from the agenda",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "The session to remove from the agenda",
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1).",
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No persona chosen: X-Demo-Profile-ID is missing or empty"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Profile or session not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The agenda isn't available right now"
+          }
+        },
+        "summary": "Remove From Agenda",
+        "tags": [
+          "portal"
+        ]
+      },
+      "put": {
+        "description": "Bookmarks a talk for the persona in X-Demo-Profile-ID (AUTHZ-1). Idempotent: bookmarking twice is one\nbookmark. A bookmark is a personal plan; it never reserves a seat.",
+        "operationId": "add_to_agenda_api_v1_me_agenda__session_id__put",
+        "parameters": [
+          {
+            "description": "The session to bookmark",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "The session to bookmark",
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1).",
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No persona chosen: X-Demo-Profile-ID is missing or empty"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Profile or session not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The agenda isn't available right now"
+          }
+        },
+        "summary": "Add To Agenda",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
     "/api/v1/ops/transcripts/{session_id}/publish": {
       "post": {
         "description": "Organizer only (AUTHZ-1). Publishes the transcript: a new revision and its outbox job commit together, and\nthe text becomes searchable once the worker has indexed it (TRANSCRIPT-1, DATA-1).",

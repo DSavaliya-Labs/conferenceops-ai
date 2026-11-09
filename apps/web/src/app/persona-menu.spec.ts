@@ -35,8 +35,8 @@ describe('Persona menu', () => {
     const button = trigger(view);
     expect(button.getAttribute('aria-haspopup')).toBe('menu');
     expect(button.getAttribute('aria-expanded')).toBe('false');
-    expect(text(button)).toContain('Choose a persona');
-    expect(text(button)).toContain('Fictional demo persona');
+    expect(text(button)).toContain('Aisha Rahman'); // the demo's hero is the default persona
+    expect(text(button).toLowerCase()).toContain('fictional demo persona');
     expect(text(view.el.querySelector('#persona-menu-hint'))).toContain('not a sign-in');
     expect(menu(view)).toBeNull();
   });
@@ -63,7 +63,11 @@ describe('Persona menu', () => {
       'Organizer',
       'Attendee',
     ]);
-    expect(items(view).every((item) => item.getAttribute('aria-checked') === 'false')).toBe(true);
+    expect(
+      items(view)
+        .filter((item) => item.getAttribute('aria-checked') === 'true')
+        .map((item) => text(item.querySelector('.name'))),
+    ).toEqual(['Aisha Rahman']); // the default persona is the checked one
     expect(document.activeElement).toBe(items(view)[0]);
   });
 
