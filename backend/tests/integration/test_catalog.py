@@ -2,7 +2,9 @@
 
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
+from threading import Event
 
 import pytest
 from alembic import command
@@ -90,3 +92,31 @@ def test_reimporting_unchanged_data_is_free_and_a_change_bumps_the_revision(engi
     with transaction(engine) as db:
         revisions = sorted(db.scalars(select(OutboxJob.entity_revision)))
     assert revisions == [1, 2]
+
+
+def test_concurrent_updates_lock_the_row_and_get_distinct_revisions(engine, conference_id):
+    with transaction(engine) as db:
+        upsert_session(db, _data(conference_id))
+
+    update_started = Event()
+
+    def update_to_v3():
+        with transaction(engine) as db:
+            row, changed = upsert_session(db, _data(conference_id, title="Operating Kubernetes Agents Safely, v3"))
+            update_started.set()
+            return row.revision, changed
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with transaction(engine) as db:
+            row, changed = upsert_session(db, _data(conference_id, title="Operating Kubernetes Agents Safely, v2"))
+            assert changed and row.revision == 2
+            update = executor.submit(update_to_v3)
+            assert not update_started.wait(timeout=0.2)
+
+        assert update.result(timeout=5) == (3, True)
+
+    with transaction(engine) as db:
+        row = db.scalars(select(Session)).one()
+        revisions = sorted(db.scalars(select(OutboxJob.entity_revision)))
+    assert row.revision == 3
+    assert revisions == [1, 2, 3]
