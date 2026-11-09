@@ -91,7 +91,10 @@ helm dependency build deploy/chart
 args=(-f deploy/env/aks/values.yaml --set image.repository=example.azurecr.io/conferenceops-backend --set image.tag=ci
   --set web.image.repository=example.azurecr.io/conferenceops-web --set web.image.tag=ci)
 helm lint deploy/chart "${args[@]}"
-helm template conferenceops deploy/chart "${args[@]}" | kubeconform -strict -summary -ignore-missing-schemas
+helm template conferenceops deploy/chart "${args[@]}" >/tmp/aks.yaml
+kubeconform -strict -summary -ignore-missing-schemas /tmp/aks.yaml
+scripts/check-chart-policy.sh /tmp/aks.yaml   # K8S-1 for every container, the public entry point, the web pods' emptyDirs
+bash scripts/tests/check-chart-policy.test.sh
 ```
 
 The job also checks that discovery replicas outside the bounds and an image tag `latest` don't render. Keep the real

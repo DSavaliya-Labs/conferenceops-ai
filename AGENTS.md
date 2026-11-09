@@ -53,7 +53,7 @@ and shows a platform run by an AI operations team.
 | `deploy/env/aks/values.yaml` | The values deployed to AKS. The only file an incident pull request may change (OPS-1) |
 | `observability/dash0/` | Dash0 as code: the attendee-impact dashboard, check rules, the Agent0 incident automation and the dataset's settings, applied by `scripts/dash0-apply.sh` |
 | `ops/load/` | k6 load tests |
-| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh`, `generate-cloudbridge-media.sh` (the replay clips, with `cloudbridge_media.py`), `dash0-deploy-marker.sh` (the deploy's `dash0.deployment` events, succeeded or failed). Their tests: `scripts/tests/` |
+| `scripts/` | Bash scripts (`set -euo pipefail`, shellcheck-clean): `azure-setup.sh` (registry, OIDC identity, roles, the `aks` environment; `secrets` sets its secrets), `platform-up.sh` (ECK operator), `protect-main.sh`, `build-log.sh`, `check-incident-scope.sh`, `generate-cloudbridge-media.sh` (the replay clips, with `cloudbridge_media.py`), `dash0-deploy-marker.sh` (the deploy's `dash0.deployment` events, succeeded or failed). Their tests: `scripts/tests/`, `check-chart-policy.sh` (what the rendered AKS chart must keep: K8S-1 for every container, the public Service on the web pods with `externalTrafficPolicy: Cluster` and an HTTP probe on their readiness path, the web pods' emptyDirs; run by helm-policy). Their tests are in `scripts/tests/` |
 | `.github/workflows/` | CI (`ci.yml`), deploy to AKS on every merge (`deploy.yml`), Build log |
 | `.gitar/` | Gitar review instructions, rules and the risk, apply, approve and merge criteria |
 | `.claude/skills/` | Claude Code skills: `radar-fix` turns a Radar verdict into a reviewed chart or values PR |
@@ -124,13 +124,16 @@ docker build -t conferenceops-backend backend # one image; the Deployment picks 
 helm dependency build deploy/chart && helm template conferenceops deploy/chart -f deploy/env/aks/values.yaml \
   --set image.repository=x --set image.tag=y \
   --set web.image.repository=x --set web.image.tag=y   # render the chart as CI does
+helm template ... | scripts/check-chart-policy.sh       # what helm-policy checks on that render (K8S-1, public entry point)
+bash scripts/tests/check-chart-policy.test.sh           # that check's tests (helm and ruby)
 ```
 
 The public URL is http://conferenceops-ai.westus3.cloudapp.azure.com, and it serves the web app: nginx serves the
 Angular app and `/config.json`, and proxies search, recommendations and Ask to discovery-api and every other `/api`
 route to core-api. Every merge to `main` builds both images, deploys them there (`deploy.yml`), checks that the URL
-serves the app, its config and a search, and marks the deploy in Dash0 as a `dash0.deployment` event per service, with
-`deployment.status` succeeded or failed (`scripts/dash0-deploy-marker.sh`).
+serves the app, its config with the browser token (without it, browser monitoring is off) and a search, and marks the
+deploy in Dash0 as a `dash0.deployment` event per service, with `deployment.status` succeeded or failed
+(`scripts/dash0-deploy-marker.sh`).
 
 ## Web app commands
 
