@@ -89,6 +89,21 @@ def test_hybrid_search_fuses_both_channels_and_revalidates_hits_against_postgres
     assert response.results[0].starts_at_venue == "Tue Nov 10, 10:30 AM MST"
 
 
+def test_search_fills_limit_after_revalidating_all_fused_candidates():
+    class LeadingDeletedES:
+        def search(self, index, size, source, query=None, knn=None):
+            ids = ["deleted", "s2"] if knn else ["deleted", "s1"]
+            return {"hits": {"hits": [{"_id": doc_id} for doc_id in ids]}}
+
+    sessions = fake_sessions()
+    response = HybridSearch(LeadingDeletedES(), FakeEmbedder(), sessions).search(
+        SearchRequest(query="tracing", limit=1)
+    )
+
+    assert sessions.calls == [(["deleted", "s1", "s2"], None)]
+    assert [result.id for result in response.results] == ["s1"]
+
+
 def test_search_falls_back_to_keywords_when_the_model_fails(caplog):
     es = FakeES()
     response = HybridSearch(es, FakeEmbedder(fail=True), fake_sessions()).search(SearchRequest(query="secret-words"))

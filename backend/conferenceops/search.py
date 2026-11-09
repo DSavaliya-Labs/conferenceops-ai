@@ -150,11 +150,12 @@ class HybridSearch:
         except Exception:
             # PRIV-1: log the failure, never the query.
             log.warning("query embedding failed; searching by keywords", exc_info=True)
-        ids = rrf_fuse(rankings)[: request.limit]
+        ids = rrf_fuse(rankings)
         if not ids:
             return SearchResponse(results=[], retrieval_mode=mode)
         rows = self.sessions.load_visible(ids, conference=request.conference)
-        results = [_hit_from_row(doc_id, *rows[doc_id]) for doc_id in ids if doc_id in rows]
+        visible = [doc_id for doc_id in ids if doc_id in rows][: request.limit]
+        results = [_hit_from_row(doc_id, *rows[doc_id]) for doc_id in visible]
         return SearchResponse(results=results, retrieval_mode=mode)
 
 
