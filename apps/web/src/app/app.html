@@ -1,0 +1,59 @@
+<a class="skip-link" href="#main">Skip to main content</a>
+
+<header class="site-header">
+  <p class="brand">ConferenceOps AI</p>
+  <p class="event">KubeCon + CloudNativeCon North America 2026 · Salt Lake City</p>
+</header>
+
+<main id="main" tabindex="-1">
+  <h1>Find your next talk</h1>
+
+  <form class="ask" role="search" (submit)="submit($event)" novalidate>
+    <label for="ask-input">Ask about talks</label>
+    <div class="ask-row">
+      <input
+        id="ask-input"
+        type="search"
+        name="query"
+        autocomplete="off"
+        [value]="query()"
+        (input)="onInput($event)"
+        [attr.aria-invalid]="validation() ? 'true' : null"
+        [attr.aria-describedby]="validation() ? 'ask-error' : 'ask-hint'"
+      />
+      <button type="submit" [disabled]="status() === 'searching'">Search</button>
+    </div>
+    <p id="ask-hint" class="hint">Describe what you want to learn, in your own words.</p>
+    @if (validation()) {
+      <p id="ask-error" class="error" role="alert">{{ validation() }}</p>
+    }
+  </form>
+
+  <p class="visually-hidden" role="status" aria-live="polite">{{ announcement() }}</p>
+
+  @if (status() === 'error') {
+    <p class="error" role="alert">Search isn't available right now. Please try again in a moment.</p>
+  }
+
+  @if (status() === 'done' && results().length > 0) {
+    <section aria-labelledby="results-heading">
+      <h2 id="results-heading">Talks that match</h2>
+      <ol class="results">
+        @for (result of results(); track result.id) {
+          <li>
+            <h3>{{ result.title }}</h3>
+            <p>{{ result.event }}@if (result.room) { · {{ result.room }} }@if (result.level) { · {{ result.level }} }</p>
+          </li>
+        }
+      </ol>
+    </section>
+  }
+</main>
+
+<footer class="site-footer">
+  <p>
+    KubeCon + CloudNativeCon NA 2026 sessions come from the event's public schedule. CloudBridge Summit is a fictional
+    demo event.
+  </p>
+  <p>AI use: answers and explanations come from OpenAI models and are checked against the schedule before you see them.</p>
+</footer>

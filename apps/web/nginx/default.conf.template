@@ -1,0 +1,41 @@
+# The web container: the Angular app, a same-origin proxy to the APIs, and runtime config for the browser.
+# The entrypoint fills ${...} from the environment at start; nginx's own $variables are left alone.
+
+# Paths only, never query strings (PRIV-1).
+log_format paths_only '$remote_addr [$time_local] "$request_method $uri" $status $body_bytes_sent $request_time';
+
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    access_log /dev/stdout paths_only;
+    # proxy_pass with a variable resolves the API name per request, so nginx starts without the APIs. The resolver is
+    # the one in /etc/resolv.conf (NGINX_ENTRYPOINT_LOCAL_RESOLVERS in the Dockerfile); nginx ignores search domains,
+    # so upstream names must be fully qualified.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=30s ipv6=off;
+    resolver_timeout 5s;
+
+    location = /health/live { access_log off; default_type text/plain; return 200 "ok\n"; }
+    location = /health/ready { access_log off; default_type text/plain; return 200 "ready\n"; }
+
+    # Only the ingest-only browser token reaches the browser (SEC-1).
+    location = /config.json {
+        default_type application/json;
+        add_header Cache-Control "no-store";
+        return 200 '{"dash0Endpoint":"${DASH0_WEB_ENDPOINT}","dash0Token":"${DASH0_BROWSER_TOKEN}","dash0Dataset":"${DASH0_DATASET}","environment":"${ENVIRONMENT}","version":"${SERVICE_VERSION}"}';
+    }
+
+    location ~ ^/api/v1/(search|recommendations|ask) {
+        set $discovery http://${DISCOVERY_UPSTREAM};
+        proxy_pass $discovery;
+        proxy_set_header Host $host;
+    }
+    location /api/ {
+        set $core http://${CORE_UPSTREAM};
+        proxy_pass $core;
+        proxy_set_header Host $host;
+    }
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
