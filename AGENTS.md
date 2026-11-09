@@ -80,7 +80,7 @@ Review findings cite these IDs.
   ingest-only Dash0 token.
 - **K8S-1, workloads.** Run as non-root, with no privilege escalation, dropped capabilities and a read-only root
   filesystem. Set requests and a memory limit. Probes don't depend on downstream services. Pin versions, and pass
-  `--reset-values` to `helm upgrade`.
+  `--reset-values --server-side=true --force-conflicts` to `helm upgrade`.
 - **OPS-1, incident scope.** An incident pull request changes only the discovery workload's replicas or resources
   in `deploy/env/aks/values.yaml`. It never changes review policy, CI gates, the load rate or acceptance thresholds.
 - **TEST-1, tests.** A behavior change comes with tests that prove it. A bug fix comes with a regression test that
