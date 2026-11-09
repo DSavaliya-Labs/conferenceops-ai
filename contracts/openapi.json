@@ -521,6 +521,83 @@
         "title": "Citation",
         "type": "object"
       },
+      "CommunityFeed": {
+        "properties": {
+          "isCommunityContent": {
+            "default": true,
+            "description": "Always true: posts are what personas wrote, never official event information",
+            "title": "Iscommunitycontent",
+            "type": "boolean"
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/CommunityPost"
+            },
+            "title": "Posts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "posts"
+        ],
+        "title": "CommunityFeed",
+        "type": "object"
+      },
+      "CommunityPost": {
+        "properties": {
+          "author": {
+            "description": "The persona's display name; every persona is fictional",
+            "title": "Author",
+            "type": "string"
+          },
+          "authorRole": {
+            "description": "attendee, speaker, partner, organizer or host",
+            "title": "Authorrole",
+            "type": "string"
+          },
+          "body": {
+            "title": "Body",
+            "type": "string"
+          },
+          "createdAt": {
+            "description": "UTC instant (TIME-1)",
+            "format": "date-time",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentid"
+          },
+          "replies": {
+            "items": {
+              "$ref": "#/components/schemas/CommunityPost"
+            },
+            "title": "Replies",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "author",
+          "authorRole",
+          "body",
+          "createdAt"
+        ],
+        "title": "CommunityPost",
+        "type": "object"
+      },
       "Cue": {
         "properties": {
           "end": {
@@ -682,6 +759,34 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "NewPost": {
+        "properties": {
+          "body": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          },
+          "parentId": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The post this replies to; replies are one level",
+            "title": "Parentid"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "NewPost",
         "type": "object"
       },
       "Notice": {
@@ -1396,6 +1501,146 @@
         "summary": "Ask",
         "tags": [
           "ask"
+        ]
+      }
+    },
+    "/api/v1/community/posts": {
+      "get": {
+        "description": "The newest posts first, each with its replies oldest first. Public fields only.",
+        "operationId": "community_feed_api_v1_community_posts_get",
+        "parameters": [
+          {
+            "description": "How many posts, newest first",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "How many posts, newest first",
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityFeed"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The community feed isn't available right now"
+          }
+        },
+        "summary": "Community Feed",
+        "tags": [
+          "community"
+        ]
+      },
+      "post": {
+        "description": "A post, or a reply when `parentId` is set, by the persona in X-Demo-Profile-ID (AUTHZ-1).",
+        "operationId": "create_post_api_v1_community_posts_post",
+        "parameters": [
+          {
+            "description": "The demo persona the request acts as. The server looks her up and trusts nothing else the client says about her (AUTHZ-1).",
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewPost"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityPost"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "No persona chosen: X-Demo-Profile-ID is missing or empty"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "Profile or parent post not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorDetail"
+                }
+              }
+            },
+            "description": "The community feed isn't available right now"
+          }
+        },
+        "summary": "Create Post",
+        "tags": [
+          "community"
         ]
       }
     },

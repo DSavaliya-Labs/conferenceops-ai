@@ -70,6 +70,7 @@ describe('App shell', () => {
       'Find talks',
       'Where next',
       'My agenda',
+      'Community',
       'Events',
       'Accessibility at the venue',
       'How this platform runs',

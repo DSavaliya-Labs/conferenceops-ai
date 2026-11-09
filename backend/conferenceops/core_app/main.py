@@ -2,6 +2,7 @@
 
 import uvicorn
 
+from conferenceops.community import router as community_router
 from conferenceops.dictation import router as dictation_router
 from conferenceops.personas import router as personas_router
 from conferenceops.portal import router as portal_router
@@ -14,6 +15,7 @@ app.include_router(personas_router)  # GET /api/v1/demo/profiles: the personas t
 app.include_router(dictation_router)  # POST /api/v1/dictation: the spoken half of the Ask bar
 app.include_router(transcripts_router)  # GET /api/v1/sessions/{id}/replay, POST /api/v1/ops/transcripts/{id}/publish
 app.include_router(portal_router)  # GET /api/v1/conferences, .../{slug}/access-facts, /api/v1/me/agenda: the portal
+app.include_router(community_router)  # GET and POST /api/v1/community/posts: the community feed
 
 
 def run() -> None:

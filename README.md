@@ -453,7 +453,9 @@ flowchart TB
 
 ## Known limitations
 
-- **No social features.** No posts, reposts, follows, notifications, moderation or image upload.
+- **Social is minimal.** The Community page has posts and one level of replies by the demo personas, with a seeded
+  conversation; there are no reposts, follows, reactions, notifications, moderation or image upload, and posts aren't
+  in search or Ask yet.
 - **One incident.** The discovery capacity incident ran once, with its recovery measured (see Dash0 and Agent0).
   The automation's trigger didn't fire for it (issue identifier reused), so the investigation was started by hand
   with the same prompt. The secondary CPU incident from the plan isn't built.

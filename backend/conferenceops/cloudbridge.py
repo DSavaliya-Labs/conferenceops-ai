@@ -44,6 +44,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session as DbSession
 
 from conferenceops.catalog import SessionData, upsert_session
+from conferenceops.community import seed_posts
 from conferenceops.db import enqueue, transaction
 from conferenceops.models import (
     AgendaItem,
@@ -595,6 +596,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     with transaction() as db:
         result = load_cloudbridge(db, reset=args.reset)
+        # The community feed's seeded conversation: added when missing, never changed (fictional personas only).
+        result.written["posts"] += seed_posts(db, profile_id)
     # Counts per table only: never names, interests or preferences (PRIV-1).
     summary = ", ".join(f"{table} {count}" for table, count in sorted(result.written.items())) or "none"
     log.info("CloudBridge Summit fixture %s; rows written: %s", "reset" if args.reset else "seeded", summary)
