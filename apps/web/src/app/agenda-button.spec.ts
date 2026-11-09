@@ -106,6 +106,27 @@ describe('Quick add to My Agenda', () => {
     expect(text(status())).toContain(`Removed “${TALK.title}” from My Agenda.`);
   });
 
+  it('keeps the last agenda and optimistic state when a successful write re-read fails', () => {
+    const { fixture, http, button, status, agenda } = setUp([TALK.id]);
+    button().click();
+    fixture.detectChanges();
+    http.expectOne(`${AGENDA_URL}/${TALK.id}`).flush(null, {
+      status: 204,
+      statusText: 'No Content',
+    });
+    fixture.detectChanges();
+
+    http
+      .expectOne(AGENDA_URL)
+      .flush('down', { status: 503, statusText: 'Service Unavailable' });
+    fixture.detectChanges();
+
+    expect(agenda.status()).toBe('done');
+    expect(agenda.agenda()?.bookmarked.map((entry) => entry.sessionId)).toEqual([TALK.id]);
+    expect(button().getAttribute('aria-pressed')).toBe('false');
+    expect(text(status())).toContain(`Removed “${TALK.title}” from My Agenda.`);
+  });
+
   it('rolls the button back and says so when the server refuses', () => {
     const { fixture, http, button, status } = setUp();
     button().click();

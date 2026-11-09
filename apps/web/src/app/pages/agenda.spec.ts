@@ -84,6 +84,35 @@ describe('My agenda', () => {
     expect(text(view.el.querySelector('[role="status"]'))).toContain('1 bookmarked, 1 attended');
   });
 
+  it('keeps focus in the list and announces when a bookmark is removed', async () => {
+    const view = await start(AISHA.id);
+    view.http.expectOne(AGENDA_URL).flush(AGENDA);
+    await settle(view);
+
+    const toggle = view.el.querySelector<HTMLButtonElement>('.bookmarked .agenda-toggle')!;
+    toggle.focus();
+    click(toggle);
+    await settle(view);
+
+    const remove = view.http.expectOne(`${AGENDA_URL}/k-1`);
+    expect(remove.request.method).toBe('DELETE');
+    remove.flush(null, { status: 204, statusText: 'No Content' });
+    await settle(view);
+
+    view.http.expectOne(AGENDA_URL).flush({ ...AGENDA, bookmarked: [] });
+    await settle(view);
+
+    expect(view.el.querySelectorAll('.bookmarked app-session-card').length).toBe(0);
+    expect(document.activeElement?.id).toBe('bookmarked-heading');
+    const announcement = 'Removed “Observability for AI SRE Teams” from My Agenda.';
+    expect(text(view.el.querySelector('[role="status"]'))).toContain(announcement);
+    expect(
+      Array.from(view.el.querySelectorAll('[role="status"]'))
+        .map((status) => text(status))
+        .filter(Boolean),
+    ).toEqual([announcement]);
+  });
+
   it('says when a persona has nothing yet, instead of showing an empty list', async () => {
     const view = await start(TOMAS.id);
     view.http.expectOne(AGENDA_URL).flush({

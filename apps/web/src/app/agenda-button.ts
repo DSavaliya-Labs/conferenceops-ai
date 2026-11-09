@@ -38,6 +38,7 @@ import { PersonaService } from './personas';
 export class AgendaButton {
   readonly sessionId = input.required<string>();
   readonly title = input.required<string>();
+  readonly announce = input(true);
 
   protected readonly agenda = inject(AgendaService);
   protected readonly personas = inject(PersonaService);
@@ -45,6 +46,6 @@ export class AgendaButton {
   /** Only this talk's change is announced here, so a page of cards never chatters. */
   protected readonly status = computed(() => {
     const line = this.agenda.announcement();
-    return line.includes(`“${this.title()}”`) ? line : '';
+    return this.announce() && line.includes(`“${this.title()}”`) ? line : '';
   });
 }
