@@ -2,12 +2,14 @@
 
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
+from threading import Barrier, Event
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, event, func, select, text
 
 from conferenceops.catalog import SessionData, upsert_session
 from conferenceops.db import transaction
@@ -69,6 +71,30 @@ def test_a_new_session_and_its_outbox_job_commit_together(engine, conference_id)
     assert (job.entity_id, job.entity_revision, job.kind) == (row.id, 1, "index")
 
 
+def test_concurrent_first_imports_create_one_session_and_one_outbox_job(engine, conference_id):
+    insert_barrier = Barrier(2)
+
+    def synchronize_session_inserts(_conn, _cursor, statement, _parameters, _context, _executemany):
+        if statement.lstrip().upper().startswith("INSERT INTO SESSIONS"):
+            insert_barrier.wait(timeout=5)
+
+    event.listen(engine, "before_cursor_execute", synchronize_session_inserts)
+
+    def import_session():
+        with transaction(engine) as db:
+            _, changed = upsert_session(db, _data(conference_id))
+            return changed
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _: import_session(), range(2)))
+    finally:
+        event.remove(engine, "before_cursor_execute", synchronize_session_inserts)
+
+    assert sorted(results) == [False, True]
+    assert _counts(engine) == (1, 1)
+
+
 def test_a_failed_transaction_leaves_neither_the_session_nor_its_job(engine, conference_id):
     with pytest.raises(RuntimeError), transaction(engine) as db:
         upsert_session(db, _data(conference_id))
@@ -90,3 +116,31 @@ def test_reimporting_unchanged_data_is_free_and_a_change_bumps_the_revision(engi
     with transaction(engine) as db:
         revisions = sorted(db.scalars(select(OutboxJob.entity_revision)))
     assert revisions == [1, 2]
+
+
+def test_concurrent_updates_lock_the_row_and_get_distinct_revisions(engine, conference_id):
+    with transaction(engine) as db:
+        upsert_session(db, _data(conference_id))
+
+    update_started = Event()
+
+    def update_to_v3():
+        with transaction(engine) as db:
+            row, changed = upsert_session(db, _data(conference_id, title="Operating Kubernetes Agents Safely, v3"))
+            update_started.set()
+            return row.revision, changed
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        with transaction(engine) as db:
+            row, changed = upsert_session(db, _data(conference_id, title="Operating Kubernetes Agents Safely, v2"))
+            assert changed and row.revision == 2
+            update = executor.submit(update_to_v3)
+            assert not update_started.wait(timeout=0.2)
+
+        assert update.result(timeout=5) == (3, True)
+
+    with transaction(engine) as db:
+        row = db.scalars(select(Session)).one()
+        revisions = sorted(db.scalars(select(OutboxJob.entity_revision)))
+    assert row.revision == 3
+    assert revisions == [1, 2, 3]
