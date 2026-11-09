@@ -6,7 +6,7 @@ import httpx2
 import openai
 import pytest
 from elastic_transport import ApiResponseMeta, HttpHeaders, NodeConfig
-from elasticsearch import ApiError, BadRequestError, ConflictError, NotFoundError
+from elasticsearch import ApiError, BadRequestError, ConflictError, ConnectionTimeout, NotFoundError
 from elasticsearch import ConnectionError as EsConnectionError
 from sqlalchemy.sql import operators
 
@@ -251,16 +251,52 @@ def test_a_version_conflict_means_a_newer_revision_is_indexed_so_the_job_is_done
     assert (jobs[0].status, jobs[0].attempts) == (OutboxStatus.DONE, 0)
 
 
-def test_one_failing_job_does_not_stop_the_batch():
+ANSWERED_ERRORS = {
+    "unrecognized-error": RuntimeError("shard unavailable"),
+    "elasticsearch-unavailable-503": _es_error(ApiError, 503),
+}
+
+
+@pytest.mark.parametrize("error", ANSWERED_ERRORS.values(), ids=ANSWERED_ERRORS.keys())
+def test_one_failing_job_does_not_stop_the_batch(error):
+    # An error Elasticsearch answers comes back at once, so it fails only its own job and the batch goes on.
     jobs, sessions, db = _indexable(2)
-    es = _Es(index_error=RuntimeError("shard unavailable"), failing_ids={str(sessions[0].id)})
+    es = _Es(index_error=error, failing_ids={str(sessions[0].id)})
 
     indexed = process_outbox(db, es, _Embedder(), now=lambda: NOW)
 
     assert indexed == 1
-    assert (jobs[0].status, jobs[0].attempts, jobs[0].last_error) == (OutboxStatus.PENDING, 1, "RuntimeError")
+    assert (jobs[0].status, jobs[0].attempts, jobs[0].last_error) == (OutboxStatus.PENDING, 1, type(error).__name__)
     assert jobs[1].status == OutboxStatus.DONE
     assert [call["id"] for call in es.indexed] == [str(sessions[1].id)]
+
+
+NOT_ANSWERED = {
+    "timeout": ConnectionTimeout("Connection timed out during request"),
+    "connection-refused": EsConnectionError("connection refused"),
+}
+
+
+@pytest.mark.parametrize("error", NOT_ANSWERED.values(), ids=NOT_ANSWERED.keys())
+def test_when_elasticsearch_stops_answering_the_rest_of_the_batch_backs_off_without_another_call(error):
+    # A call Elasticsearch doesn't answer waits out the worker's 30 s request timeout, and a pass holds up to 64 jobs:
+    # one timeout per job would outlast the worker's 300 s iteration budget and get it restarted by the liveness probe
+    # (worker/liveness.py), rolling back the pass. So the first such error ends the pass: what was indexed before it
+    # stays done, and the jobs after it, deletes included, back off with that error without being tried.
+    jobs, sessions, db = _indexable(3)
+    delete_job = _job(kind="delete")
+    db.jobs.append(delete_job)
+    es = _Es(index_error=error, failing_ids={str(sessions[1].id)})  # the stub would answer every later call
+
+    indexed = process_outbox(db, es, _Embedder(), now=lambda: NOW)
+
+    assert indexed == 1
+    assert [call["id"] for call in es.indexed] == [str(sessions[0].id)]
+    assert es.deleted == []
+    assert jobs[0].status == OutboxStatus.DONE
+    for job in (jobs[1], jobs[2], delete_job):
+        assert (job.status, job.attempts, job.last_error) == (OutboxStatus.PENDING, 1, type(error).__name__)
+        assert job.next_attempt_at == NOW + timedelta(seconds=2)
 
 
 def test_a_rejected_text_fails_only_its_own_job():
@@ -314,6 +350,7 @@ OUTAGES = {
     "openai-server-error-500": (_Embedder(_openai_error(openai.InternalServerError, 500)), _Es()),
     "unrecognized-error": (_Embedder(RuntimeError("provider unavailable")), _Es()),
     "elasticsearch-unreachable": (_Embedder(), _Es(index_error=EsConnectionError("connection refused"))),
+    "elasticsearch-timeout": (_Embedder(), _Es(index_error=ConnectionTimeout("Connection timed out during request"))),
     "elasticsearch-throttling-429": (_Embedder(), _Es(index_error=_es_error(ApiError, 429))),
     "elasticsearch-unavailable-503": (_Embedder(), _Es(index_error=_es_error(ApiError, 503))),
 }
