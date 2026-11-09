@@ -2,7 +2,7 @@
 
 **Team:** Dhruv Savaliya (`DSavaliya-gh`), solo.
 **Repository:** https://github.com/DSavaliya-Labs/conferenceops-ai (public, Apache-2.0, every change after the first commit through a pull request).
-**Live:** http://conferenceops-ai.westus3.cloudapp.azure.com (AKS, plain HTTP). QR code: [`docs/public-url-qr.svg`](docs/public-url-qr.svg).
+**Live:** http://conferenceops-ai.westus3.cloudapp.azure.com (AKS, plain HTTP).
 **Demo video:** _add the link_.
 **Built today:** 30+ pull requests merged since 11:00 AM MST, each reviewed by Gitar and deployed to AKS on merge ([Build log, issue #1](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1)).
 
@@ -37,7 +37,7 @@ The incident on November 9 at 21:27–21:52 UTC went around this loop once, meas
 
 ### Gitar: "Never Merge Broken"
 
-- *"Gitar is part of how you built, with features landing through PRs it reviewed, not one PR at the end."* 34+ PRs today, every one reviewed; one entry per PR in [issue #1](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) with Gitar's verdict, risk and the CI result. Low- and medium-risk PRs auto-merged after Gitar's approval; high-risk ones waited for the builder.
+- *"Gitar is part of how you built, with features landing through PRs it reviewed, not one PR at the end."* 30+ PRs today, every one reviewed; one entry per PR in [issue #1](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1) with Gitar's verdict, risk and the CI result. Low- and medium-risk PRs auto-merged after Gitar's approval; high-risk ones waited for the builder.
 - *"Project-aware setup, with review instructions and repository rules that reflect how your team actually works."* [`AGENTS.md`](AGENTS.md) carries 14 rule IDs (PRIV-1, ACCESS-1, TIME-1, OPS-1, …) that findings cite; [`.gitar/review/`](.gitar/review), [`.gitar/rules/`](.gitar/rules) (API client in sync, honest attendee facts, attendee privacy, incident scope, PR description, tests for behavior changes) and [`.gitar/config/`](.gitar/config) (risk, apply, approve, merge criteria). Incident PRs may change only the discovery replicas or resources: enforced by Gitar's rule and by the `incident-scope` CI check.
 - *"Using CI failure diagnosis and auto-apply to fix real problems."* Real findings Gitar fixed with tests: a PRIV-1 span leak ([#2](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/2), `29da8e8`), a CI health check that passed when it shouldn't, an upsert race and a first-insert race ([#3](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/3)), the migration hook order and a floating image tag ([#5](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/5)), nginx failing to start when upstreams don't resolve ([#7](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/7)). One Gitar fix was wrong (Docker's DNS resolver on Kubernetes) and the builder corrected it in `c2d301c`: its commits are reviewed too. A planted defect, [#28](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/28) (a fixed UTC offset), passed CI and was **blocked by Gitar** with the exact consequence; it is held open as evidence and never merged.
 
@@ -63,7 +63,7 @@ Honest access facts only (the seven the Linux Foundation publishes, each with it
 
 ## Known limitations
 
-No social features (posts, follows); three replay clips rather than full talks; dictation needs an HTTPS origin to demo in a browser; the incident ran once, with the trigger caveat above; the secondary CPU incident from the plan isn't built. Full list in the [README](README.md#known-limitations).
+No social features (posts, follows); three replay clips rather than full talks; dictation needs an HTTPS origin to demo in a browser; the incident ran once, with the trigger caveat above; the secondary CPU incident from the plan isn't built.
 
 ## Disclosure
 
