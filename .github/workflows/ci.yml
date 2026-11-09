@@ -120,5 +120,6 @@ jobs:
         run: |
           docker run --rm -d --name core -p 8080:8080 "conferenceops-backend:${GITHUB_SHA}"
           for _ in $(seq 1 20); do curl -sf localhost:8080/health/ready && break; sleep 1; done
+          curl -sf localhost:8080/health/ready || { docker logs core; exit 1; }
           test "$(docker exec core id -u)" = 10001
           docker rm -f core

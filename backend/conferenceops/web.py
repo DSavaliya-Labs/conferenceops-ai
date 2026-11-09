@@ -9,6 +9,15 @@ from conferenceops.telemetry import HEALTH_PATHS, setup_telemetry
 health = APIRouter(tags=["health"])
 
 
+def _strip_query(span, scope):
+    if span and span.is_recording():
+        path = scope.get("path", "")
+        span.set_attribute("http.target", path)
+        span.set_attribute("url.path", path)
+        span.set_attribute("http.url", path)
+        span.set_attribute("url.query", "")
+
+
 @health.get("/health/live")
 def live() -> dict[str, str]:
     """The process is running. Never calls PostgreSQL, Elasticsearch or OpenAI (K8S-1)."""
@@ -26,5 +35,5 @@ def create_app(service_name: str) -> FastAPI:
     setup_telemetry(service_name, cfg)
     app = FastAPI(title=f"ConferenceOps AI {service_name}", version=cfg.service_version)
     app.include_router(health)
-    FastAPIInstrumentor.instrument_app(app, excluded_urls=HEALTH_PATHS)
+    FastAPIInstrumentor.instrument_app(app, excluded_urls=HEALTH_PATHS, server_request_hook=_strip_query)
     return app
