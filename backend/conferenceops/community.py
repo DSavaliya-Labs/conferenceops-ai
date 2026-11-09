@@ -185,8 +185,8 @@ def seed_posts(db: DbSession, author_of: Callable[[str], uuid.UUID]) -> int:
             .on_conflict_do_nothing(index_elements=["id"])
             .returning(Post.id)
         )
-        if created.scalar_one_or_none() is not None:
-            added += 1
+        # RETURNING lists only the inserted row; the driver's rowcount isn't reliable for this statement.
+        added += len(created.all())
     return added
 
 
