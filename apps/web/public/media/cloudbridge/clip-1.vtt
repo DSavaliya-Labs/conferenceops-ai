@@ -1,0 +1,77 @@
+WEBVTT
+Kind: captions
+Language: en
+
+NOTE Simulated excerpt: a synthesized voice reading text written for the demo. CloudBridge Summit 2026 is a fictional event.
+
+1
+00:00:00.000 --> 00:00:01.500
+[Simulated excerpt: synthesized voice, fictional speaker]
+
+2
+00:00:01.500 --> 00:00:05.500
+<v Daniel Kowalczyk>Let me show you the morning our AI SRE agent got it wrong.
+
+3
+00:00:06.520 --> 00:00:09.540
+<v Daniel Kowalczyk>At six twelve, the checkout latency alarm fired.
+
+4
+00:00:09.540 --> 00:00:14.000
+<v Daniel Kowalczyk>Within forty seconds the agent had a diagnosis: the primary database was saturated,
+
+5
+00:00:14.000 --> 00:00:18.980
+<v Daniel Kowalczyk>and it proposed a failover. It wrote a confident summary, with graphs.
+
+6
+00:00:18.980 --> 00:00:21.040
+<v Daniel Kowalczyk>The database was fine.
+
+7
+00:00:21.040 --> 00:00:24.040
+<v Daniel Kowalczyk>What the agent had seen was a jump in connection errors.
+
+8
+00:00:24.040 --> 00:00:27.320
+<v Daniel Kowalczyk>What it had ignored was a config push nine minutes earlier
+
+9
+00:00:27.320 --> 00:00:31.620
+<v Daniel Kowalczyk>that set the connection pool to zero on three of our twelve pods.
+
+10
+00:00:31.620 --> 00:00:36.100
+<v Daniel Kowalczyk>The failover would have cost us about nine minutes of write downtime, for nothing.
+
+11
+00:00:36.100 --> 00:00:40.160
+<v Daniel Kowalczyk>The guardrail that caught it was boring, and that is the point.
+
+12
+00:00:40.160 --> 00:00:44.160
+<v Daniel Kowalczyk>Every change the agent proposes becomes a pull request with evidence links,
+
+13
+00:00:44.160 --> 00:00:45.900
+<v Daniel Kowalczyk>and a human has to approve it.
+
+14
+00:00:45.900 --> 00:00:50.440
+<v Daniel Kowalczyk>Our on-call engineer opened the first link, saw that the errors came from three pods only,
+
+15
+00:00:50.440 --> 00:00:52.640
+<v Daniel Kowalczyk>and rejected the fix in one click.
+
+16
+00:00:52.640 --> 00:00:53.860
+<v Daniel Kowalczyk>So here is my checklist.
+
+17
+00:00:54.920 --> 00:00:59.700
+<v Daniel Kowalczyk>Demand evidence links, not summaries. Keep every change reviewable.
+
+18
+00:00:59.700 --> 00:01:01.220
+<v Daniel Kowalczyk>And make it cheap for a human to say no.

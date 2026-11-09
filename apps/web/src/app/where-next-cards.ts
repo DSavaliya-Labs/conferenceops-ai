@@ -12,6 +12,7 @@ const WINDOW_LABELS: Record<WhereNextWindow, string> = {
 const EXCLUSION_LABELS: Record<string, string> = {
   STARTED: 'had already started',
   OUTSIDE_WINDOW: 'were outside the time you chose',
+  NOT_OPEN: "can't simply be walked into (off-site, sold out, or separate registration required)",
   ON_AGENDA: 'are already on your agenda',
   AGENDA_CONFLICT: 'overlap a talk on your agenda',
   LEVEL_EXCLUDED: 'are at a level you left out',

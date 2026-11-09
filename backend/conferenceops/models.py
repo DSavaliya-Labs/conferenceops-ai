@@ -13,6 +13,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -70,6 +71,11 @@ class OutboxStatus(enum.StrEnum):
     PENDING = "pending"
     DONE = "done"
     FAILED = "failed"
+
+
+class TranscriptStatus(enum.StrEnum):
+    PROCESSING = "processing"  # concluded, not published: the replay plays, but search and Ask never see the text
+    PUBLISHED = "published"  # the only state whose text reaches Elasticsearch and the model (TRANSCRIPT-1)
 
 
 def _uuid() -> Mapped[uuid.UUID]:
@@ -198,6 +204,33 @@ class AgendaItem(Base):
     __tablename__ = "agenda_items"
     profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True)
     session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True)
+    created_at: Mapped[datetime] = _created()
+
+
+class Transcript(Base):
+    """A concluded session's transcript with its captioned replay: the publication manifest of TRANSCRIPT-1.
+
+    `cues` are the caption cues (start, end, text in seconds); `text` is the same words as one string. `revision`
+    moves forward on every change, publishing and unpublishing included, and a search chunk carries the revision it
+    was built from: retrieval only returns a chunk whose transcript is published at that same revision, so an older
+    or superseded revision never resurfaces (DATA-1). Only the fictional CloudBridge Summit has transcripts, and
+    they are simulated excerpts, labeled as such wherever they are shown (SPEAKER-1)."""
+
+    __tablename__ = "transcripts"
+    id: Mapped[uuid.UUID] = _uuid()
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"), unique=True)
+    speaker_name: Mapped[str] = mapped_column(String(200))
+    is_simulated: Mapped[bool] = mapped_column(Boolean, default=True)
+    media_url: Mapped[str] = mapped_column(Text)  # the replay video, served by the web container
+    captions_url: Mapped[str] = mapped_column(Text)  # its WebVTT captions
+    duration_seconds: Mapped[float] = mapped_column(Float)
+    text: Mapped[str] = mapped_column(Text)
+    cues: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+    status: Mapped[TranscriptStatus] = mapped_column(_enum(TranscriptStatus))
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
     created_at: Mapped[datetime] = _created()
 
 

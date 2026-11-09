@@ -11,18 +11,20 @@ behind AI-1's validation and fallback).
      BM25 alone, and the answer says `lexical` (AI-1, fail open);
    - each session she attended or bookmarked (her CloudBridge history): kNN with that session's stored vector, so no
      model call.
-3. **Hard rules**, on the canonical PostgreSQL rows: not started, inside the window, not already on her agenda, no
-   conflict with her agenda, not at a level she excluded, and captions published when she asked for captions
-   (§8.3 rule 5). A requirement is never softened to fill the list (ACCESS-1).
+3. **Hard rules**, on the canonical PostgreSQL rows: not started, inside the window, open to any attendee (not held
+   off-site, and not marked in its title as sold out or as needing a separate registration), not already on her
+   agenda, no conflict with her agenda, not at a level she excluded, and captions published for the session's room
+   when she asked for captions (§8.3 rule 5). A requirement is never softened to fill the list (ACCESS-1).
 4. **Reasons**, each checkable: an interest whose every word appears in the talk; a talk she attended or bookmarked
    whose stored embedding is at least `SIMILARITY_MIN` cosine-similar; captions published when she asked for them. A
    talk without an interest or history reason isn't offered.
 5. **Ranking:** `RELEVANCE_WEIGHT` x the fused relevance (normalized to the best candidate) + `INTEREST_WEIGHT` x the
    share of her interests it matches. Ties go to the earlier start, then the session ID.
 
-Access on every card: only the event's published facts, each with its source link. Nothing is ever labeled step-free.
-For a persona who needs step-free routes, every answer says routes aren't published and points to the event's staff
-(ACCESS-1).
+Access on every card: only the event's published facts, each with its source link. The captioning and reserved-seating
+statements cover the event's session rooms, so a session whose room isn't listed, or is off-site, on the expo floor or
+in a public area, gets "not published" for both instead. Nothing is ever labeled step-free. For a persona who needs
+step-free routes, every answer says routes aren't published and points to the event's staff (ACCESS-1).
 
 PRIV-1: interests, the query, preferences and history never reach logs, spans or metric labels. Logs carry counts and
 the request ID, and no per-rule breakdown: the captions rule would reveal an access need."""
@@ -43,7 +45,7 @@ from openai import OpenAI
 from pydantic import Field
 
 from conferenceops.indexing import ALIAS, Embedder, OpenAIEmbedder
-from conferenceops.personas import demo_profile_id
+from conferenceops.personas import DEMO_PROFILE_OPENAPI, DEMO_PROFILE_RESPONSES, ErrorDetail, demo_profile_id
 from conferenceops.search import CANDIDATES, TEXT_FIELDS, ApiModel, rrf_scores, session_filters, venue_time
 from conferenceops.settings import settings
 from conferenceops.where_next_data import (
@@ -67,10 +69,30 @@ INTEREST_WEIGHT = 0.235
 # with the CloudBridge talks: talks on the same subject scored 0.55-0.70, loosely related ones 0.42 or less.
 SIMILARITY_MIN = 0.5
 MAX_HISTORY = 12  # the most recent history sessions, so a long history can't fan one request out
-SESSION_FACT_KINDS = ("captions", "reserved_seating")  # published facts that apply to every session
+SESSION_FACT_KINDS = ("captions", "reserved_seating")  # published facts about the event's session rooms
 CAPTIONS = "captions"
 STAFF_HELP = "staff_help"
 STEP_FREE = "step_free_route"
+
+# Where a session is, and whether an attendee can simply walk in, in the KubeCon feed's own words (checked on Nov 9
+# against its 36 room names and 600 sessions). Matched without regard to case.
+OFF_SITE_ROOM = "Off-Site Location"  # sponsor-hosted co-located events away from the venue
+NOT_OPEN_TITLE_MARKERS = ("SEPARATE REGISTRATION REQUIRED", "SOLD OUT")
+# Places at the venue that aren't session rooms: the expo floor (the access page itself names "Solutions Showcase |
+# Halls A-C, Halls 1-5") and public areas. The access page's captioning and seating statements don't cover them.
+NOT_SESSION_ROOM_MARKERS = (
+    "Solutions Showcase",
+    "Halls A-C",
+    "Entrance",
+    "Registration",
+    "Foyer",
+    "Mezzanine",
+    "Lobby",
+)
+NOT_COVERED = {
+    "captions": "Captioning isn't published for this session's location.",
+    "reserved_seating": "Reserved seating isn't published for this session's location.",
+}
 
 LevelName = Literal["beginner", "intermediate", "advanced", "all"]
 Window = Literal["today", "tomorrow_morning", "any"]
@@ -78,6 +100,7 @@ ReasonCode = Literal["INTEREST_MATCH", "HISTORY_MATCH", "BOOKMARK_MATCH", "CAPTI
 Exclusion = Literal[
     "STARTED",
     "OUTSIDE_WINDOW",
+    "NOT_OPEN",
     "ON_AGENDA",
     "AGENDA_CONFLICT",
     "LEVEL_EXCLUDED",
@@ -167,9 +190,10 @@ class RecommendationResponse(ApiModel):
     window: Window
     candidates: list[Candidate]
     excluded: dict[str, int] = Field(
-        description="How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, ON_AGENDA, "
-        "AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history "
-        "reason. Counts only, never another attendee's data."
+        description="How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, NOT_OPEN (held "
+        "off-site, sold out, or needing a separate registration), ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, "
+        "CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another "
+        "attendee's data."
     )
     warnings: list[Notice]
 
@@ -241,23 +265,72 @@ def step_free_statement(event: Event) -> AccessStatement:
     )
 
 
-def access_for(event: Event, persona: Persona) -> tuple[list[AccessStatement], list[str]]:
-    """The published facts that apply to every session, then, for a persona who needs them, the statement that
-    step-free routes aren't published. Returns the statements and the IDs of the facts they quote."""
-    facts = [fact for fact in event.facts if fact.kind in SESSION_FACT_KINDS]
-    statements = [
-        AccessStatement(
-            kind=fact.kind, status="published", text=fact.text, location=fact.location, source_url=fact.source_url
-        )
-        for fact in facts
-    ]
-    ids = [fact.id for fact in facts]
+def _mentions(text: str | None, markers: Sequence[str]) -> bool:
+    folded = (text or "").casefold()
+    return any(marker.casefold() in folded for marker in markers)
+
+
+def open_to_attendees(row: SessionRow) -> bool:
+    """False for a session an attendee can't simply walk into: held off-site, or marked in its title as sold out or as
+    needing a separate registration. "Where should I go next?" offers only talks she can go to."""
+    off_site = (row.room or "").casefold() == OFF_SITE_ROOM.casefold()
+    return not off_site and not _mentions(row.title, NOT_OPEN_TITLE_MARKERS)
+
+
+def in_session_room(row: SessionRow) -> bool:
+    """True when the session is in one of the event's session rooms, the rooms the access page's captioning ("See
+    instructions in each breakout room") and reserved-seating ("in each session") statements are about. False when
+    its room isn't listed, or is off-site, on the expo floor or in a public area: there those statements say nothing,
+    so captions and seating stay unknown (ACCESS-1)."""
+    if not row.room or row.room.casefold() == OFF_SITE_ROOM.casefold():
+        return False
+    return not _mentions(row.room, NOT_SESSION_ROOM_MARKERS)
+
+
+def access_for(event: Event, persona: Persona, row: SessionRow) -> tuple[list[AccessStatement], list[str]]:
+    """What the card says about access to this session, and the IDs of the facts it quotes.
+
+    - In one of the event's session rooms: the published captioning and reserved-seating facts, in the event's own
+      wording, with their source link.
+    - Anywhere else: each of those facts is stated as not published for the session's location, never borrowed.
+    - For a persona who needs step-free routes: routes aren't published, and who to ask."""
+    covered = in_session_room(row)
+    statements: list[AccessStatement] = []
+    ids: list[str] = []
+    for fact in event.facts:
+        if fact.kind not in SESSION_FACT_KINDS:
+            continue
+        if covered:
+            statements.append(
+                AccessStatement(
+                    kind=fact.kind,
+                    status="published",
+                    text=fact.text,
+                    location=fact.location,
+                    source_url=fact.source_url,
+                )
+            )
+            ids.append(fact.id)
+        else:
+            statements.append(
+                AccessStatement(
+                    kind=fact.kind, status="not_published", text=NOT_COVERED[fact.kind], source_url=fact.source_url
+                )
+            )
     if persona.needs_step_free:
         statements.append(step_free_statement(event))
         staff = _fact(event, STAFF_HELP)
         if staff:
             ids.append(staff.id)
     return statements, ids
+
+
+def eligibility_for(persona: Persona, captions_here: bool) -> Literal["confirmed", "unconfirmed"]:
+    """confirmed only when every access need she set is backed by a published fact for this session. Step-free routes
+    are never published, so a persona who needs them is always unconfirmed."""
+    if persona.needs_step_free or (persona.wants_captions and not captions_here):
+        return "unconfirmed"
+    return "confirmed"
 
 
 def exclusion(
@@ -274,6 +347,8 @@ def exclusion(
         return "STARTED"
     if row.starts_at < start or (end is not None and row.starts_at >= end):
         return "OUTSIDE_WINDOW"
+    if not open_to_attendees(row):
+        return "NOT_OPEN"
     if any(item.session_id == row.session_id for item in agenda):
         return "ON_AGENDA"
     if any(row.starts_at < item.ends_at and item.starts_at < row.ends_at for item in agenda):
@@ -303,7 +378,7 @@ def reasons_for(
     persona: Persona,
     history: Sequence[PastSession],
     similarity: dict[str, dict[str, float]],
-    captions: PublishedFact | None,
+    captions_here: bool,
 ) -> list[Reason]:
     reasons: list[Reason] = []
     matched = matched_interests(persona.interests, row)
@@ -324,7 +399,7 @@ def reasons_for(
                     similarity=round(cos, 3),
                 )
             )
-    if reasons and persona.wants_captions and captions is not None:
+    if reasons and persona.wants_captions and captions_here:
         reasons.append(
             Reason(code="CAPTIONS_PUBLISHED", text="You asked for captions, and the event publishes captioning")
         )
@@ -350,33 +425,33 @@ def decide(
     start, end = window_bounds(request.window, now, zone)
     agenda = agenda_on(persona, event)
     excluded_levels = persona.excluded_levels | frozenset(request.filters.excluded_levels)
-    captions = _fact(event, CAPTIONS)
-    captions_missing = persona.wants_captions and captions is None
-    access, fact_ids = access_for(event, persona)
-    eligibility: Literal["confirmed", "unconfirmed"] = "unconfirmed" if persona.needs_step_free else "confirmed"
+    captions_published = _fact(event, CAPTIONS) is not None
 
     excluded: dict[str, int] = {}
-    qualified: list[tuple[SessionRow, list[Reason]]] = []
+    qualified: list[tuple[SessionRow, list[Reason], bool]] = []
     for session_id in sorted(rows):
         row = rows[session_id]
         if session_id not in relevance:
             continue
+        captions_here = captions_published and in_session_room(row)
+        captions_missing = persona.wants_captions and not captions_here
         rule = exclusion(row, now, start, end, agenda, excluded_levels, captions_missing)
-        reasons = reasons_for(row, persona, history, similarity, captions) if rule is None else []
+        reasons = reasons_for(row, persona, history, similarity, captions_here) if rule is None else []
         if rule is None and not reasons:
             rule = "NO_MATCH"
         if rule is not None:
             excluded[rule] = excluded.get(rule, 0) + 1
             continue
-        qualified.append((row, reasons))
+        qualified.append((row, reasons, captions_here))
 
     candidates: list[Candidate] = []
     if qualified:
-        best = max(relevance[row.session_id] for row, _ in qualified)
-        for row, reasons in qualified:
+        best = max(relevance[row.session_id] for row, _, _ in qualified)
+        for row, reasons, captions_here in qualified:
             matched = next((reason.interests for reason in reasons if reason.code == "INTEREST_MATCH"), [])
             overlap = len(matched) / len(persona.interests) if persona.interests else 0.0
             score = round(RELEVANCE_WEIGHT * relevance[row.session_id] / best + INTEREST_WEIGHT * overlap, 4)
+            access, fact_ids = access_for(event, persona, row)
             candidates.append(
                 Candidate(
                     session_id=row.session_id,
@@ -389,7 +464,7 @@ def decide(
                     starts_at_venue=venue_time(row.starts_at, zone),
                     room=row.room,
                     level=row.level,
-                    eligibility=eligibility,
+                    eligibility=eligibility_for(persona, captions_here),
                     score=score,
                     source_revision=row.revision,
                     access=access,
@@ -569,7 +644,20 @@ def get_where_next() -> WhereNext:
 router = APIRouter(tags=["recommendations"])
 
 
-@router.post("/api/v1/recommendations/next", response_model=RecommendationResponse, response_model_by_alias=True)
+@router.post(
+    "/api/v1/recommendations/next",
+    response_model=RecommendationResponse,
+    response_model_by_alias=True,
+    responses={
+        **DEMO_PROFILE_RESPONSES,
+        503: {
+            "model": ErrorDetail,
+            "description": "Suggestions aren't available right now: the event's schedule isn't imported, search "
+            "isn't configured, or retrieval failed",
+        },
+    },
+    openapi_extra=DEMO_PROFILE_OPENAPI,
+)
 def where_next(
     request: RecommendationRequest,
     profile_id: Annotated[uuid.UUID, Depends(demo_profile_id)],

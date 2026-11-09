@@ -19,6 +19,8 @@ from conferenceops.where_next import (
     RecommendationRequest,
     WhereNext,
     get_where_next,
+    in_session_room,
+    open_to_attendees,
     window_bounds,
 )
 from conferenceops.where_next_data import Event, PastSession, Persona, PlannedSession, PublishedFact, SessionRow
@@ -75,7 +77,9 @@ ROWS = {
     "k-agents": row(
         "k-agents", "Agents Under Pressure", venue(10, 9), abstract="Running Kubernetes agents safely", level="advanced"
     ),
-    "k-similar": row("k-similar", "Postmortems That Teach", venue(10, 10), level="all", room=None),
+    "k-similar": row(
+        "k-similar", "Postmortems That Teach", venue(10, 10), level="all", room="Salt Palace | Level 2 | 254"
+    ),
     "k-unrelated": row("k-unrelated", "Database Sharding Patterns", venue(10, 11)),
     "k-beginner": row("k-beginner", "Observability 101", venue(10, 9), level="beginner"),
     "k-planned": row("k-planned", "Already On My Agenda", venue(10, 14)),
@@ -299,6 +303,126 @@ def test_a_persona_without_access_needs_gets_no_step_free_statement():
         assert candidate.eligibility == "confirmed"
         assert "step_free_route" not in [a.kind for a in candidate.access]
         assert "CAPTIONS_PUBLISHED" not in [r.code for r in candidate.reasons]
+
+
+# --- Who can walk in, and where the published facts apply (ACCESS-1) ----------------------------------------------
+
+OFF_SITE = "Off-Site Location"
+EXPO_FLOOR = "Salt Palace | Level 1 | Halls A-C, Halls 1-5"
+# The 36 room names KubeCon sessions used on Nov 9, 2026: the event's session rooms, then everywhere else.
+SESSION_ROOMS = [
+    "Hyatt Regency | Level 2 | Salt Lake Ballroom C",
+    "Hyatt Regency | Level 2 | Salt Lake Ballroom DE",
+    "Hyatt Regency | Level 3 | Park City",
+    "Hyatt Regency | Level 4 | Regency Ballroom A",
+    "Hyatt Regency | Level 4 | Regency Ballroom B",
+    "Hyatt Regency | Level 4 | Regency Ballroom B-D",
+    "Hyatt Regency | Level 4 | Regency Ballroom CD",
+    "Hyatt Regency | Level 5 | Capitol Reef",
+    "Salt Palace | Level 1 | 151",
+    "Salt Palace | Level 1 | Grand Ballroom ACE",
+    "Salt Palace | Level 1 | Grand Ballroom BDF",
+    "Salt Palace | Level 1 | Grand Ballroom GI",
+    "Salt Palace | Level 1 | Grand Ballroom H",
+    "Salt Palace | Level 1 | Grand Ballroom J",
+    "Salt Palace | Level 1 | Hall DE",
+    "Salt Palace | Level 2 | 250 A-C",
+    "Salt Palace | Level 2 | 250 D-F",
+    "Salt Palace | Level 2 | 251 A-C",
+    "Salt Palace | Level 2 | 251 D-F",
+    "Salt Palace | Level 2 | 254",
+    "Salt Palace | Level 2 | 255 A",
+    "Salt Palace | Level 2 | 255 BC",
+    "Salt Palace | Level 2 | 255 D",
+    "Salt Palace | Level 2 | 255 EF",
+]
+NOT_SESSION_ROOMS = [
+    "Off-Site Location",
+    "Salt Palace | Level 1 | Halls A-C, Halls 1-5",
+    "Salt Palace | Level 1 | Solutions Showcase | Hall 1 | Alpine Overlook Zone | Demo Theater",
+    "Salt Palace | Level 1 | Solutions Showcase | Hall 1 | Alpine Overlook Zone | Network Nook",
+    "Salt Palace | Level 1 | Solutions Showcase | Hall 5 | Cosmic Canyon Zone | Project Pavilion",
+    "Salt Palace | Level 1 | Solutions Showcase | Hall B | Starlight Summit Zone",
+    "Salt Palace | Level 1 | Solutions Showcase | Halls 5 | Cosmic Canyon Zone | Cloud Native Theater",
+    "Salt Palace | 200 South Entrance (South)",
+    "Salt Palace | Level 2 | East Registration",
+    "Salt Palace | Level 1 | North Grand Ballroom Foyer",
+    "Salt Palace | Level 2 | Upper Mezzanine",
+    "Hyatt Regency Lobby",
+]
+
+
+def test_a_talk_an_attendee_cant_simply_walk_into_is_never_offered():
+    # On Nov 9 the live answer offered off-site co-located events that need a separate registration, like this one,
+    # with the captions and seating facts attached.
+    tigera = "Discovering and Securing AI Agents in Kubernetes Hosted by Tigera | SEPARATE REGISTRATION REQUIRED"
+    rows = {
+        "k-tigera": row("k-tigera", tigera, venue(9, 18), room=OFF_SITE),
+        "k-sold-out": row("k-sold-out", "Kubernetes Agents Workshop [Sold Out]", venue(9, 18, 30)),  # a session room
+        "k-off-site": row("k-off-site", "Observability Mixer", venue(9, 19), room=OFF_SITE),  # off-site, no marker
+        "k-tonight": ROWS["k-tonight"],
+    }
+    es = FakeES(bm25=sorted(rows), knn=sorted(rows))
+    personas = (aisha(), aisha(needs_step_free=False), aisha(needs_step_free=False, wants_captions=False))
+    for persona in personas:
+        response = recommend(persona=persona, rows=rows, es=es, limit=5)
+        assert ids(response) == ["k-tonight"]  # every one of them matches an interest; only this one is open
+        assert response.excluded["NOT_OPEN"] == 3
+        assert all(c.room != OFF_SITE for c in response.candidates)
+    assert [open_to_attendees(r) for r in rows.values()] == [False, False, False, True]
+
+
+def test_the_facts_apply_in_the_feeds_session_rooms_and_nowhere_else():
+    def in_room(room):
+        return in_session_room(row("k-1", "A talk", venue(10, 9), room=room))
+
+    assert [room for room in SESSION_ROOMS if not in_room(room)] == []
+    # Off-site, the expo floor and public areas, and a room that isn't listed: the statements say nothing there.
+    assert [room for room in [*NOT_SESSION_ROOMS, None] if in_room(room)] == []
+
+
+def test_captions_and_seating_are_stated_only_for_the_events_session_rooms():
+    rows = {
+        "k-room": row("k-room", "Observability for AI SRE Teams", venue(10, 9)),
+        "k-booth": row(
+            "k-booth",
+            "Gold In-Booth Demos: ControlTheory, New Relic, OpenObserve",
+            venue(10, 10),
+            abstract="Observability demos at the sponsors' booths",
+            room=EXPO_FLOOR,
+        ),
+        "k-unlisted": row("k-unlisted", "Observability Office Hours", venue(10, 11), room=None),
+    }
+    es = FakeES(bm25=sorted(rows), knn=sorted(rows))
+    stored = {f.kind: f for f in facts()}
+
+    # Without a captions need, all three are offered, and only the session room carries the published facts.
+    response = recommend(persona=aisha(needs_step_free=False, wants_captions=False), rows=rows, es=es, limit=5)
+    by_id = {c.session_id: c for c in response.candidates}
+    assert set(by_id) == {"k-room", "k-booth", "k-unlisted"}
+    room = by_id["k-room"]
+    assert [(a.kind, a.status, a.text) for a in room.access] == [
+        ("captions", "published", stored["captions"].text),
+        ("reserved_seating", "published", stored["reserved_seating"].text),
+    ]
+    assert {"access_fact:fact-0", "access_fact:fact-1"} <= set(room.source_ids)
+    for elsewhere in (by_id["k-booth"], by_id["k-unlisted"]):
+        assert [(a.kind, a.status) for a in elsewhere.access] == [
+            ("captions", "not_published"),
+            ("reserved_seating", "not_published"),
+        ]
+        assert all(a.source_url == ACCESS_PAGE for a in elsewhere.access)
+        assert all(a.text not in {f.text for f in facts()} for a in elsewhere.access)  # the facts aren't borrowed
+        assert elsewhere.source_ids == [f"session:{elsewhere.session_id}:3"]
+
+    # A caption requirement is met only where captioning is published: never softened to fill the list.
+    for persona in (aisha(needs_step_free=False), aisha()):
+        response = recommend(persona=persona, rows=rows, es=es, limit=5)
+        assert ids(response) == ["k-room"]
+        assert response.excluded["CAPTIONS_NOT_PUBLISHED"] == 2
+        assert "CAPTIONS_PUBLISHED" in [r.code for r in response.candidates[0].reasons]
+    assert recommend(persona=aisha(needs_step_free=False), rows=rows, es=es).candidates[0].eligibility == "confirmed"
+    assert recommend(persona=aisha(), rows=rows, es=es).candidates[0].eligibility == "unconfirmed"  # step-free
 
 
 # --- Reasons and ranking ------------------------------------------------------------------------------------------
