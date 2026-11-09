@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     openai_transcribe_model: str = "gpt-transcribe"  # dictation.py; whisper-1 and gpt-4o-transcribe are deprecated
+    # Ask's reasoning model (Responses API, structured outputs) and how long one answer may take before the
+    # deterministic fallback answers instead (AI-1). gpt-6-luna: OpenAI's efficient model for focused tasks.
+    openai_model: str = "gpt-6-luna"
+    openai_ask_timeout_seconds: float = 10.0
     import_interval_seconds: float = 1800.0  # how often the worker re-imports the KubeCon feed
     # Where the worker's loops write their heartbeat files and the liveness probe reads them (worker/liveness.py).
     worker_heartbeat_dir: str = "/tmp/worker-heartbeat"  # noqa: S108 - the chart's emptyDir, private to the pod

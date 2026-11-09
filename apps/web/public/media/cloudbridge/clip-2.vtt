@@ -1,0 +1,73 @@
+WEBVTT
+Kind: captions
+Language: en
+
+NOTE Simulated excerpt: a synthesized voice reading text written for the demo. CloudBridge Summit 2026 is a fictional event.
+
+1
+00:00:00.000 --> 00:00:01.500
+[Simulated excerpt: synthesized voice, fictional speaker]
+
+2
+00:00:01.500 --> 00:00:06.540
+<v Ananya Iyer>Our internal developer portal had a search box that everyone ignored. Here is why.
+
+3
+00:00:06.540 --> 00:00:09.180
+<v Ananya Iyer>Keyword search was great when you knew the exact words.
+
+4
+00:00:09.180 --> 00:00:13.960
+<v Ananya Iyer>Type the error code E4031 and the runbook came up first.
+
+5
+00:00:13.960 --> 00:00:17.920
+<v Ananya Iyer>But ask why does my deploy hang after the health check, and you got nothing,
+
+6
+00:00:17.920 --> 00:00:21.300
+<v Ananya Iyer>because the runbook says readiness probe timeout.
+
+7
+00:00:21.300 --> 00:00:24.540
+<v Ananya Iyer>Semantic search was the mirror image. It understood the question,
+
+8
+00:00:24.540 --> 00:00:30.120
+<v Ananya Iyer>but it would rank a general page about probes above the one runbook that mentioned E4031.
+
+9
+00:00:31.180 --> 00:00:35.400
+<v Ananya Iyer>So we stopped choosing. We run both queries in Elasticsearch:
+
+10
+00:00:35.400 --> 00:00:40.140
+<v Ananya Iyer>BM25 for the words, and a k-nearest-neighbors query over embeddings for the meaning,
+
+11
+00:00:40.140 --> 00:00:42.080
+<v Ananya Iyer>with the same filters on both.
+
+12
+00:00:42.080 --> 00:00:45.920
+<v Ananya Iyer>Then we fuse the two ranked lists with reciprocal rank fusion.
+
+13
+00:00:45.920 --> 00:00:52.040
+<v Ananya Iyer>Each document scores one over sixty plus its rank in each list, and the sums decide the order.
+
+14
+00:00:52.040 --> 00:00:54.100
+<v Ananya Iyer>No tuning, no learned weights.
+
+15
+00:00:54.100 --> 00:00:57.440
+<v Ananya Iyer>On our forty golden queries, the right page landed in the top five
+
+16
+00:00:58.940 --> 00:01:02.960
+<v Ananya Iyer>sixty-one percent of the time with keywords alone, and eighty-four percent with the hybrid.
+
+17
+00:01:02.960 --> 00:01:06.600
+<v Ananya Iyer>The cost is two queries instead of one, and that was worth it.
