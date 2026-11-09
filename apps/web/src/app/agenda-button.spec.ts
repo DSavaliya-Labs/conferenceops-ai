@@ -88,6 +88,36 @@ describe('Quick add to My Agenda', () => {
     expect(text(status())).toContain(`Added “${TALK.title}” to My Agenda.`);
   });
 
+  it('reports a failed re-read when a write finishes during the initial agenda load', () => {
+    TestBed.configureTestingModule({
+      imports: [Host],
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    const personas = TestBed.inject(PersonaService);
+    personas.personas.set([AISHA]);
+    personas.select(AISHA.id);
+    const fixture = TestBed.createComponent(Host);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne(AGENDA_URL);
+    const agenda = TestBed.inject(AgendaService);
+    expect(agenda.status()).toBe('loading');
+
+    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    http
+      .expectOne(`${AGENDA_URL}/${TALK.id}`)
+      .flush(null, { status: 204, statusText: 'No Content' });
+    fixture.detectChanges();
+
+    http
+      .expectOne(AGENDA_URL)
+      .flush('down', { status: 503, statusText: 'Service Unavailable' });
+    fixture.detectChanges();
+    expect(agenda.status()).toBe('error');
+    expect(agenda.agenda()).toBeNull();
+  });
+
   it('removes with a DELETE when the talk is already on the agenda', () => {
     const { fixture, http, button, status } = setUp([TALK.id]);
     expect(text(button())).toContain('In My Agenda');

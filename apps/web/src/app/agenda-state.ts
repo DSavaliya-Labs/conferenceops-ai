@@ -16,6 +16,7 @@ export class AgendaService {
   private readonly portal = inject(PortalService);
   private readonly personas = inject(PersonaService);
   private request?: Subscription;
+  private profileId = '';
 
   readonly status = signal<AgendaStatus>('none');
   readonly agenda = signal<AgendaResponse | null>(null);
@@ -58,10 +59,18 @@ export class AgendaService {
    *  otherwise the last persona's agenda is dropped first. No persona means no agenda and no request. */
   refresh(id: string = this.personas.selectedId(), keep = false): void {
     this.request?.unsubscribe();
+    const samePersona = id === this.profileId;
+    this.profileId = id;
+    // A background re-read only makes sense over a list the server already confirmed.
+    keep = keep && this.status() === 'done';
     if (!keep) {
-      // A new persona (or a retry): nothing optimistic from before applies to her.
+      // Drop the old list; keep only writes still in flight for the same persona.
       this.agenda.set(null);
-      this.pending.set(new Map());
+      if (samePersona) {
+        this.pending.update((m) => new Map([...m].filter(([sid]) => this.busy().has(sid))));
+      } else {
+        this.pending.set(new Map());
+      }
     }
     if (!id) {
       this.status.set('none');
