@@ -108,6 +108,8 @@ Review findings cite these IDs.
 cd backend && uv sync --python 3.12          # install (Python 3.12, locked by uv.lock)
 uv run ruff check . && uv run ruff format --check .
 uv run pytest -q                              # unit tests; no PostgreSQL, Elasticsearch or OpenAI needed
+DATABASE_URL=postgresql+psycopg://... uv run alembic upgrade head   # apply migrations
+DATABASE_URL=... uv run pytest -q -m integration                     # integration tests (real PostgreSQL)
 uv run core-api                               # or discovery-api, worker; listens on :8080
 docker build -t conferenceops-backend backend # one image; the Deployment picks the command
 ```
