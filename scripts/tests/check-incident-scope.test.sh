@@ -166,6 +166,33 @@ test_field_the_chart_does_not_read() {  # the chart reads replicas; replicaCount
   contains 'added: ["components","discovery","replicaCount"]'
 }
 
+test_admission_limit() {  # the incident fix never changes the admission capacity (PLAN.md §15.2)
+  begin admission-limit
+  replace "    replicas: 1" "    replicas: 1
+    maxInflight: 8"
+  commit "Base values with the admission limit"
+  BASE=$(repo_git rev-parse HEAD)
+  replace "maxInflight: 8" "maxInflight: 40"
+  commit "Head values"
+  run
+  expect_rc 1
+  contains "Changed line outside replicas/resources:     maxInflight: 40"
+  contains 'changed: ["components","discovery","maxInflight"]'
+}
+
+test_more_replicas_next_to_the_admission_limit() {  # the planned fix still passes with the limit in the values
+  begin replicas-next-to-limit
+  replace "    replicas: 1" "    replicas: 1
+    maxInflight: 8"
+  commit "Base values with the admission limit"
+  BASE=$(repo_git rev-parse HEAD)
+  replace "    replicas: 1" "    replicas: 3"
+  commit "Head values"
+  run
+  expect_rc 0
+  contains "Incident scope OK"
+}
+
 test_allowed_key_at_another_path() {  # an allowed key name outside components.discovery
   begin key-at-another-path
   replace "  dnsLabel: conferenceops-ai" "  dnsLabel: conferenceops-ai
@@ -269,6 +296,8 @@ main() {
   test_reformatted_discovery
   test_flow_mapping_cannot_hide_a_field
   test_field_the_chart_does_not_read
+  test_admission_limit
+  test_more_replicas_next_to_the_admission_limit
   test_allowed_key_at_another_path
   test_other_value
   test_other_file
