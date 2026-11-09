@@ -1,140 +1,87 @@
-import { Component, computed, inject, signal } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { DOCUMENT, Component, ElementRef, inject, signal, viewChild } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } from '@angular/router';
+import { filter } from 'rxjs';
 
-import { PersonaSwitcher } from './persona-switcher';
+import { IconName, Icon } from './icons';
+import { PersonaMenu } from './persona-menu';
 import { PersonaService } from './personas';
-import { SearchResult, SearchService } from './search';
-import { WhereNextResponse, WhereNextService, WhereNextWindow } from './where-next';
-import { WhereNextCards } from './where-next-cards';
+import { SearchBar } from './search-bar';
+import { WhereNextService } from './where-next';
 
-type Status = 'idle' | 'searching' | 'done' | 'error';
-type WhereNextStatus = 'idle' | 'loading' | 'done' | 'error';
+export interface NavLink {
+  path: string;
+  label: string;
+  icon: IconName;
+}
 
+/** The left navigation, one entry per feature on the platform. A new feature adds one line here and one route in
+ *  app.routes.ts. */
+export const NAV_LINKS: NavLink[] = [
+  { path: '/talks', label: 'Find talks', icon: 'search' },
+  { path: '/where-next', label: 'Where next', icon: 'compass' },
+  { path: '/agenda', label: 'My agenda', icon: 'bookmark' },
+  { path: '/events', label: 'Events', icon: 'calendar' },
+  { path: '/accessibility', label: 'Accessibility at the venue', icon: 'access' },
+  { path: '/operations', label: 'How this platform runs', icon: 'activity' },
+];
+
+/** The attendee portal's shell: a top app bar (the product name, the Ask bar centered, the persona menu at the
+ *  right), the left navigation (a disclosure behind a menu button on narrow screens), the routed page, and the
+ *  footer with the platform's disclosures. Landmarks, a skip link and focus management make it keyboard-first
+ *  (A11Y-1). */
 @Component({
   selector: 'app-root',
-  imports: [PersonaSwitcher, WhereNextCards],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, Icon, PersonaMenu, SearchBar],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
 export class App {
-  private readonly searchService = inject(SearchService);
-  private readonly whereNextService = inject(WhereNextService);
   protected readonly personas = inject(PersonaService);
+  private readonly whereNext = inject(WhereNextService);
+  private readonly document = inject(DOCUMENT);
+  private readonly navToggle = viewChild.required<ElementRef<HTMLButtonElement>>('navToggle');
 
-  protected readonly query = signal('');
-  protected readonly status = signal<Status>('idle');
-  protected readonly results = signal<SearchResult[]>([]);
-  protected readonly validation = signal('');
+  protected readonly links = NAV_LINKS;
+  protected readonly navOpen = signal(false);
+  /** Set by a navigation link, so a page change moves focus to the page, not a search from the Ask bar. */
+  private focusMainAfterNavigation = false;
 
-  protected readonly window = signal<WhereNextWindow>('today');
-  protected readonly whereNextStatus = signal<WhereNextStatus>('idle');
-  protected readonly whereNext = signal<WhereNextResponse | null>(null);
-  protected readonly whereNextValidation = signal('');
-  private readonly lastAction = signal<'search' | 'whereNext'>('search');
-  private whereNextRequest?: Subscription;
-
-  /** One short status line for screen readers, for the latest action; never announced per keystroke (A11Y-1). */
-  protected readonly announcement = computed(() =>
-    this.lastAction() === 'whereNext' ? this.whereNextAnnouncement() : this.searchAnnouncement(),
-  );
-
-  private readonly searchAnnouncement = computed(() => {
-    switch (this.status()) {
-      case 'searching':
-        return 'Searching…';
-      case 'done': {
-        const n = this.results().length;
-        return n === 0
-          ? 'No talks found. Try other words.'
-          : `${n} ${n === 1 ? 'talk' : 'talks'} found.`;
-      }
-      default:
-        return '';
-    }
-  });
-
-  private readonly whereNextAnnouncement = computed(() => {
-    const name = this.personas.selected()?.displayName ?? '';
-    switch (this.whereNextStatus()) {
-      case 'loading':
-        return `Finding talks for ${name}…`;
-      case 'done': {
-        const n = this.whereNext()?.candidates.length ?? 0;
-        return n === 0
-          ? 'No talk fits right now. The reasons are below.'
-          : `${n} ${n === 1 ? 'suggestion' : 'suggestions'} for ${name}.`;
-      }
-      default:
-        return '';
-    }
-  });
-
-  protected onInput(event: Event): void {
-    this.query.set((event.target as HTMLInputElement).value);
-    this.validation.set('');
+  constructor() {
+    this.personas.load();
+    inject(Router)
+      .events.pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => {
+        this.navOpen.set(false);
+        if (this.focusMainAfterNavigation) {
+          this.focusMainAfterNavigation = false;
+          this.document.getElementById('main')?.focus();
+        }
+      });
   }
 
-  protected submit(event: Event): void {
-    event.preventDefault();
-    const query = this.query().trim();
-    if (!query) {
-      this.validation.set(
-        'Type what you are looking for, for example “Kubernetes security for beginners”.',
-      );
-      return;
+  protected onNavLink(): void {
+    this.focusMainAfterNavigation = true;
+  }
+
+  protected toggleNav(): void {
+    this.navOpen.update((open) => !open);
+  }
+
+  /** Escape closes the narrow-screen navigation and puts focus back on the button that opened it. */
+  protected onNavKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && this.navOpen()) {
+      event.preventDefault();
+      this.navOpen.set(false);
+      this.navToggle().nativeElement.focus();
     }
-    this.lastAction.set('search');
-    this.status.set('searching');
-    this.searchService.search(query).subscribe({
-      next: (response) => {
-        this.results.set(response.results);
-        this.status.set('done');
-      },
-      error: () => {
-        this.results.set([]);
-        this.status.set('error');
-      },
-    });
   }
 
-  protected onWindowChange(event: Event): void {
-    this.window.set((event.target as HTMLSelectElement).value as WhereNextWindow);
-  }
-
-  /** "Where should I go next?" for the selected persona. The server applies her hard rules and history (AUTHZ-1). */
-  protected askWhereNext(event: Event): void {
-    event.preventDefault();
-    const persona = this.personas.selected();
-    if (!persona) {
-      this.whereNextValidation.set(
-        'Choose a demo persona first, in “Viewing as” at the top of the page.',
-      );
-      return;
-    }
-    this.whereNextValidation.set('');
-    this.whereNextRequest?.unsubscribe();
-    this.lastAction.set('whereNext');
-    this.whereNext.set(null);
-    this.whereNextStatus.set('loading');
-    this.whereNextRequest = this.whereNextService.next(persona.id, this.window()).subscribe({
-      next: (response) => {
-        this.whereNext.set(response);
-        this.whereNextStatus.set('done');
-      },
-      error: () => {
-        this.whereNext.set(null);
-        this.whereNextStatus.set('error');
-      },
-    });
-  }
-
-  /** PLAN §4.1: a persona switch cancels the request in flight and clears the last persona's suggestions, so they can
-   *  never show up under the new one. Focus stays on the switch. */
+  /** PLAN §4.1: a persona switch drops the last persona's suggestions, so they never show under the new one. */
   protected onPersonaChanged(): void {
-    this.whereNextRequest?.unsubscribe();
-    this.whereNextRequest = undefined;
-    this.whereNext.set(null);
-    this.whereNextStatus.set('idle');
-    this.whereNextValidation.set('');
+    this.whereNext.clear();
   }
 }

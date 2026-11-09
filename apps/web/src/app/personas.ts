@@ -21,6 +21,28 @@ interface PersonaList {
 
 export type PersonaStatus = 'loading' | 'ready' | 'error';
 
+const ROLE_LABELS: Record<string, string> = {
+  attendee: 'Attendee',
+  speaker: 'Speaker',
+  partner: 'Partner',
+  organizer: 'Organizer',
+  host: 'Host',
+};
+
+/** "Attendee", "Speaker · Quillon Labs": the role, and the company when there is one. */
+export function roleLine(persona: Persona): string {
+  const role = ROLE_LABELS[persona.role] ?? persona.role;
+  return persona.company ? `${role} · ${persona.company}` : role;
+}
+
+/** Up to two initials for the avatar: "Aisha Rahman" → "AR", "Tomás Vega" → "TV". */
+export function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const first = parts[0]?.[0] ?? '';
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? '') : '';
+  return (first + last).toUpperCase();
+}
+
 /** Who the app acts as. The server resolves everything else from the ID in `X-Demo-Profile-ID` (AUTHZ-1): this is a
  *  demonstration switch, not a sign-in. */
 @Service()

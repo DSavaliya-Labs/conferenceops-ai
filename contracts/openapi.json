@@ -1,6 +1,86 @@
 {
   "components": {
     "schemas": {
+      "AccessFactCard": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "description": "captions, reserved_seating, quiet_room, prayer_room, staff_help, mobility_rental",
+            "title": "Kind",
+            "type": "string"
+          },
+          "location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location"
+          },
+          "readOn": {
+            "description": "When the source was read",
+            "format": "date",
+            "title": "Readon",
+            "type": "string"
+          },
+          "sourceUrl": {
+            "description": "Where the event publishes it (ACCESS-1)",
+            "title": "Sourceurl",
+            "type": "string"
+          },
+          "text": {
+            "description": "The event's published wording",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "sourceUrl",
+          "readOn"
+        ],
+        "title": "AccessFactCard",
+        "type": "object"
+      },
+      "AccessFactList": {
+        "properties": {
+          "conference": {
+            "title": "Conference",
+            "type": "string"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/AccessFactCard"
+            },
+            "title": "Facts",
+            "type": "array"
+          },
+          "isFictional": {
+            "title": "Isfictional",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "conference",
+          "event",
+          "isFictional",
+          "facts"
+        ],
+        "title": "AccessFactList",
+        "type": "object"
+      },
       "AccessStatement": {
         "properties": {
           "kind": {
@@ -51,6 +131,122 @@
           "text"
         ],
         "title": "AccessStatement",
+        "type": "object"
+      },
+      "AgendaEntry": {
+        "properties": {
+          "conference": {
+            "title": "Conference",
+            "type": "string"
+          },
+          "endsAt": {
+            "format": "date-time",
+            "title": "Endsat",
+            "type": "string"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          },
+          "isFictional": {
+            "title": "Isfictional",
+            "type": "boolean"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "room": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Room"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "title": "Startsat",
+            "type": "string"
+          },
+          "startsAtVenue": {
+            "description": "Start in the event's time zone, e.g. 'Tue Nov 10, 10:30 AM MST'",
+            "title": "Startsatvenue",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessionId",
+          "title",
+          "event",
+          "conference",
+          "isFictional",
+          "startsAt",
+          "endsAt",
+          "startsAtVenue"
+        ],
+        "title": "AgendaEntry",
+        "type": "object"
+      },
+      "AgendaResponse": {
+        "properties": {
+          "attended": {
+            "description": "Sessions she attended, at any event",
+            "items": {
+              "$ref": "#/components/schemas/AgendaEntry"
+            },
+            "title": "Attended",
+            "type": "array"
+          },
+          "bookmarked": {
+            "description": "A bookmark is a personal plan; it never reserves a seat",
+            "items": {
+              "$ref": "#/components/schemas/AgendaEntry"
+            },
+            "title": "Bookmarked",
+            "type": "array"
+          },
+          "displayName": {
+            "title": "Displayname",
+            "type": "string"
+          },
+          "profileId": {
+            "title": "Profileid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profileId",
+          "displayName",
+          "bookmarked",
+          "attended"
+        ],
+        "title": "AgendaResponse",
         "type": "object"
       },
       "Candidate": {
@@ -168,6 +364,103 @@
           "sourceIds"
         ],
         "title": "Candidate",
+        "type": "object"
+      },
+      "EventCard": {
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/EventCounts"
+          },
+          "endsOn": {
+            "format": "date",
+            "title": "Endson",
+            "type": "string"
+          },
+          "hasTranscripts": {
+            "title": "Hastranscripts",
+            "type": "boolean"
+          },
+          "isFictional": {
+            "description": "True for CloudBridge Summit, the fictional demo event",
+            "title": "Isfictional",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "startsOn": {
+            "format": "date",
+            "title": "Startson",
+            "type": "string"
+          },
+          "timezone": {
+            "description": "The venue's IANA time zone, e.g. America/Denver (TIME-1)",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "startsOn",
+          "endsOn",
+          "timezone",
+          "isFictional",
+          "hasTranscripts",
+          "counts"
+        ],
+        "title": "EventCard",
+        "type": "object"
+      },
+      "EventCounts": {
+        "properties": {
+          "accessFacts": {
+            "description": "Published access facts stored for the event (ACCESS-1)",
+            "title": "Accessfacts",
+            "type": "integer"
+          },
+          "rooms": {
+            "title": "Rooms",
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Talks; service sessions such as breaks aren't counted",
+            "title": "Sessions",
+            "type": "integer"
+          },
+          "speakers": {
+            "title": "Speakers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sessions",
+          "speakers",
+          "rooms",
+          "accessFacts"
+        ],
+        "title": "EventCounts",
+        "type": "object"
+      },
+      "EventList": {
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/EventCard"
+            },
+            "title": "Events",
+            "type": "array"
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "title": "EventList",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -664,6 +957,72 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/conferences": {
+      "get": {
+        "description": "The events on the platform: the real, current KubeCon and the fictional, concluded CloudBridge Summit.",
+        "operationId": "list_conferences_api_v1_conferences_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Conferences",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
+    "/api/v1/conferences/{slug}/access-facts": {
+      "get": {
+        "description": "The access facts stored for an event, each with its source link and the date it was read (ACCESS-1). Nothing\nis inferred: an event that publishes none gets an empty list, and no route is ever labeled step-free.",
+        "operationId": "list_access_facts_api_v1_conferences__slug__access_facts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessFactList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Access Facts",
+        "tags": [
+          "portal"
+        ]
+      }
+    },
     "/api/v1/demo/profiles": {
       "get": {
         "description": "The personas the profile switcher offers. Public fields only: never preferences or access needs (PRIV-1).",
@@ -683,6 +1042,56 @@
         "summary": "List Demo Profiles",
         "tags": [
           "personas"
+        ]
+      }
+    },
+    "/api/v1/me/agenda": {
+      "get": {
+        "description": "The persona's bookmarks and the sessions she attended. The persona comes from X-Demo-Profile-ID (AUTHZ-1);\npublic fields only, never her preferences (PRIV-1).",
+        "operationId": "my_agenda_api_v1_me_agenda_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Demo-Profile-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Demo-Profile-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgendaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My Agenda",
+        "tags": [
+          "portal"
         ]
       }
     },
