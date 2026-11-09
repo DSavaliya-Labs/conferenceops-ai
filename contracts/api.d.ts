@@ -4,6 +4,48 @@
  */
 
 export interface paths {
+    "/api/v1/demo/profiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Demo Profiles
+         * @description The personas the profile switcher offers. Public fields only: never preferences or access needs (PRIV-1).
+         */
+        get: operations["list_demo_profiles_api_v1_demo_profiles_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/recommendations/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Where Next
+         * @description Where should I go next? Talks that haven't started, that pass the persona's hard rules, ranked by her stated
+         *     interests and history, each with checkable reasons and the published access facts. The persona comes from
+         *     X-Demo-Profile-ID (AUTHZ-1); nothing she typed or set is logged (PRIV-1).
+         */
+        post: operations["where_next_api_v1_recommendations_next_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/search": {
         parameters: {
             query?: never;
@@ -68,10 +110,221 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AccessStatement */
+        AccessStatement: {
+            /**
+             * Kind
+             * @description captions, reserved_seating, or step_free_route
+             */
+            kind: string;
+            /** Location */
+            location?: string | null;
+            /**
+             * Sourceurl
+             * @description Where the event publishes it (ACCESS-1)
+             */
+            sourceUrl?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "published" | "not_published";
+            /**
+             * Text
+             * @description The event's published wording, or why it isn't published
+             */
+            text: string;
+        };
+        /** Candidate */
+        Candidate: {
+            /** Access */
+            access: components["schemas"]["AccessStatement"][];
+            /** Conference */
+            conference: string;
+            /**
+             * Eligibility
+             * @description confirmed: every access need the persona set is backed by a published fact. unconfirmed: one can't be confirmed from published information (step-free routes never can); `access` says which.
+             * @enum {string}
+             */
+            eligibility: "confirmed" | "unconfirmed";
+            /**
+             * Endsat
+             * Format: date-time
+             */
+            endsAt: string;
+            /** Event */
+            event: string;
+            /** Isfictional */
+            isFictional: boolean;
+            /** Level */
+            level?: string | null;
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
+            /** Room */
+            room?: string | null;
+            /** Score */
+            score: number;
+            /** Sessionid */
+            sessionId: string;
+            /** Sourceids */
+            sourceIds: string[];
+            /** Sourcerevision */
+            sourceRevision: number;
+            /**
+             * Startsat
+             * Format: date-time
+             */
+            startsAt: string;
+            /**
+             * Startsatvenue
+             * @description Start in the event's time zone, e.g. 'Tue Nov 10, 10:30 AM MST'
+             */
+            startsAtVenue: string;
+            /** Title */
+            title: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** Notice */
+        Notice: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "STEP_FREE_NOT_PUBLISHED" | "NO_SIGNALS";
+            /** Sourceurl */
+            sourceUrl?: string | null;
+            /** Text */
+            text: string;
+        };
+        /**
+         * PersonaCard
+         * @description A selectable persona: public fields only (PRIV-1).
+         */
+        PersonaCard: {
+            /** Company */
+            company?: string | null;
+            /** Displayname */
+            displayName: string;
+            /** Id */
+            id: string;
+            /**
+             * Interests
+             * @description Public professional interests
+             */
+            interests?: string[];
+            /** Isfictional */
+            isFictional: boolean;
+            /** Role */
+            role: string;
+        };
+        /** PersonaList */
+        PersonaList: {
+            /** Personas */
+            personas: components["schemas"]["PersonaCard"][];
+        };
+        /** Reason */
+        Reason: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "INTEREST_MATCH" | "HISTORY_MATCH" | "BOOKMARK_MATCH" | "CAPTIONS_PUBLISHED";
+            /**
+             * Interests
+             * @description INTEREST_MATCH: the interests the talk mentions
+             */
+            interests?: string[];
+            /**
+             * Relatedsessionid
+             * @description HISTORY_MATCH, BOOKMARK_MATCH: the past talk
+             */
+            relatedSessionId?: string | null;
+            /**
+             * Similarity
+             * @description Cosine similarity of the two talks' embeddings
+             */
+            similarity?: number | null;
+            /** Text */
+            text: string;
+        };
+        /** RecommendationFilters */
+        RecommendationFilters: {
+            /**
+             * Excludedlevels
+             * @description Levels to leave out, on top of the persona's saved exclusions. A request adds exclusions; it never removes a saved one.
+             */
+            excludedLevels?: ("beginner" | "intermediate" | "advanced" | "all")[];
+        };
+        /** RecommendationRequest */
+        RecommendationRequest: {
+            filters?: components["schemas"]["RecommendationFilters"];
+            /**
+             * Limit
+             * @default 3
+             */
+            limit: number;
+            /**
+             * Query
+             * @description Optional words that refine the ranking among the talks that match the persona's interests or history. Never logged (PRIV-1).
+             */
+            query?: string | null;
+            /**
+             * Window
+             * @description today: the rest of the event's current day. tomorrow_morning: the event's next day until noon. any: every session that hasn't started. Days are in the event's time zone (TIME-1).
+             * @default any
+             * @enum {string}
+             */
+            window: "today" | "tomorrow_morning" | "any";
+        };
+        /** RecommendationResponse */
+        RecommendationResponse: {
+            /** Candidates */
+            candidates: components["schemas"]["Candidate"][];
+            /**
+             * Conferencetime
+             * Format: date-time
+             * @description Now on the event's clock (UTC)
+             */
+            conferenceTime: string;
+            /** Conferencetimevenue */
+            conferenceTimeVenue: string;
+            /**
+             * Excluded
+             * @description How many retrieved talks each hard rule removed: STARTED, OUTSIDE_WINDOW, ON_AGENDA, AGENDA_CONFLICT, LEVEL_EXCLUDED, CAPTIONS_NOT_PUBLISHED; NO_MATCH counts talks with no interest or history reason. Counts only, never another attendee's data.
+             */
+            excluded: {
+                [key: string]: number;
+            };
+            /**
+             * Observedat
+             * Format: date-time
+             * @description The actual wall-clock time (UTC)
+             */
+            observedAt: string;
+            /** Requestid */
+            requestId: string;
+            /**
+             * Retrievalmode
+             * @description lexical: the interests and query were matched by keywords only, because the embedding model didn't answer (AI-1). History matching uses stored vectors and needs no model call.
+             * @enum {string}
+             */
+            retrievalMode: "hybrid" | "lexical";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "matches" | "no_fit";
+            /** Warnings */
+            warnings: components["schemas"]["Notice"][];
+            /**
+             * Window
+             * @enum {string}
+             */
+            window: "today" | "tomorrow_morning" | "any";
         };
         /** SearchHit */
         SearchHit: {
@@ -152,6 +405,61 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_demo_profiles_api_v1_demo_profiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonaList"];
+                };
+            };
+        };
+    };
+    where_next_api_v1_recommendations_next_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Demo-Profile-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecommendationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecommendationResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     search_api_v1_search_post: {
         parameters: {
             query?: never;

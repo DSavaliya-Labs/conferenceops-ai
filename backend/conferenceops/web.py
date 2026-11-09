@@ -1,11 +1,20 @@
 """The FastAPI app factory shared by the core and discovery APIs."""
 
-from fastapi import APIRouter, FastAPI
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.trace import Span, TracerProvider
+import os
 
-from conferenceops.settings import settings
-from conferenceops.telemetry import HEALTH_PATHS, setup_telemetry
+# Emit the stable HTTP semantic conventions (http.response.status_code, http.request.method, url.path) on request
+# spans. Without this, the FastAPI instrumentation emits the old names (http.status_code, http.method), and the Dash0
+# check rules and dashboard, which query the stable names, match nothing: the rejection check could never fire.
+# Dash0's dataset-level upgrade didn't rename them at ingestion, so the names are stable at the source. An explicit
+# OTEL_SEMCONV_STABILITY_OPT_IN in the environment still wins; the instrumentation reads it when it initializes.
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "http")
+
+from fastapi import APIRouter, FastAPI  # noqa: E402
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: E402
+from opentelemetry.trace import Span, TracerProvider  # noqa: E402
+
+from conferenceops.settings import settings  # noqa: E402
+from conferenceops.telemetry import HEALTH_PATHS, setup_telemetry  # noqa: E402
 
 health = APIRouter(tags=["health"])
 
