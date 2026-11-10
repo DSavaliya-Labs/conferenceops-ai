@@ -12,6 +12,7 @@ Elasticsearch search, Dash0 observability with Agent0, Radar's AI SRE, and Gitar
 | | |
 |---|---|
 | **Live app** | <https://conferenceops-ai.westus3.cloudapp.azure.com> (self-signed certificate: accept the browser's warning once; `http://` serves too) |
+| **Demo video** | <https://drive.google.com/file/d/1z--UmAXog-8CFpAEAwu2y_A2Re4Zf2jG/view> |
 | **Submission** | [`SUBMISSION.md`](SUBMISSION.md): the pitch, the problem, what it does, how it was built, and the evidence per track |
 | **Build log** | [Issue #1](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1): one entry per pull request with Gitar's verdict, risk and CI result |
 | **Pull requests** | [All of them](https://github.com/DSavaliya-Labs/conferenceops-ai/pulls?q=is%3Apr), each with Gitar's review |

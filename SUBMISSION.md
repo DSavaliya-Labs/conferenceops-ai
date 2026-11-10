@@ -6,7 +6,7 @@
 |---|---|
 | **Live** | https://conferenceops-ai.westus3.cloudapp.azure.com (self-signed certificate: accept the browser's warning once; `http://` serves too). QR code: [`docs/public-url-qr.svg`](docs/public-url-qr.svg) |
 | **Repository** | https://github.com/DSavaliya-Labs/conferenceops-ai (public, Apache-2.0; every change after the first commit through a pull request) |
-| **Demo video** | _add the link_ |
+| **Demo video** | <https://drive.google.com/file/d/1z--UmAXog-8CFpAEAwu2y_A2Re4Zf2jG/view> |
 | **Build log** | [Issue #1](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1): one entry per pull request with Gitar's verdict, risk and CI result |
 | **Team** | Dhruv Savaliya (`DSavaliya-gh`), solo |
 | **Event** | WeMakeDevs Cloud Native Hackathon, Salt Lake City, November 9, 2026 |
