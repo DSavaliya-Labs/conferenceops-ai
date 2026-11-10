@@ -7,16 +7,39 @@ Elasticsearch search, Dash0 observability with Agent0, Radar's AI SRE, and Gitar
 > repository. Every number and link below was checked against the repository, the GitHub Actions runs or the public
 > URL on November 9. Where something isn't finished, it says **pending**. Times are UTC.
 
+## At a glance
+
+| | |
+|---|---|
+| **Live app** | <https://conferenceops-ai.westus3.cloudapp.azure.com> (self-signed certificate: accept the browser's warning once; `http://` serves too) |
+| **Submission** | [`SUBMISSION.md`](SUBMISSION.md): the pitch, the problem, what it does, how it was built, and the evidence per track |
+| **Build log** | [Issue #1](https://github.com/DSavaliya-Labs/conferenceops-ai/issues/1): one entry per pull request with Gitar's verdict, risk and CI result |
+| **Pull requests** | [All of them](https://github.com/DSavaliya-Labs/conferenceops-ai/pulls?q=is%3Apr), each with Gitar's review |
+| **Deploys** | [GitHub Actions, `deploy.yml`](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/workflows/deploy.yml): one run per merge to `main` |
+| **Tracks** | [Sonar (Gitar)](#sonar-gitar-never-merge-broken) · [Dash0 and Agent0](#dash0-and-agent0) · [Radar](#radar-ai-sre-read-only) · [Elasticsearch](#elasticsearch) · [Merge Forward](#accessibility-merge-forward) |
+
+### By the numbers (November 9, measured)
+
+| | |
+|---|---|
+| Pull requests | **66** opened, **44** merged between 10:51 AM and 5:03 PM MST (41 after Gitar's approval), 21 closed without merging (mostly replaced to get a fresh approval), 1 held open as evidence ([#28](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/28)) |
+| Gitar | reviewed 62 PRs, approved 50, merged 11 itself; **51** inline findings on 27 PRs (50 resolved); **81** commits pushed by Gitar to 35 PRs (auto-apply fixes and merges of them); 4 PRs blocked or sent back |
+| Deploys to AKS | **31** runs, 28 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge |
+| Dash0 (dataset `conferenceops`, 10:00 AM–5:00 PM MST) | **842,020** spans, **421,820** log records, **257** real browser page views; 1 dashboard, 2 check rules, 1 Agent0 automation, a deploy marker per service on every deploy |
+| The incident | check failed at 21:29:06 UTC at **26.6%** errors; Agent0's fix (replicas 1 → 3) approved by Gitar 2½ minutes after it opened; recovery **4,802 requests/min, 0 5xx, p95 0.33 s**; check resolved at 21:50:06 |
+| Radar | 3 AI investigations (confidence 0.85, 0.93, 0.9); its finding (no liveness probe on the worker) became [#35](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/35), deployed and verified healthy |
+| Elasticsearch | **624** sessions with 1,536-dimension embeddings, hybrid BM25 + kNN fused with RRF; published transcript chunks for cited answers |
+| Tests | 252 backend unit tests, PostgreSQL and Elasticsearch integration tests in CI, 95 web unit and accessibility tests, on every pull request |
+
 ## Status: what is live today
 
 <img src="docs/public-url-qr.svg" alt="QR code for http://conferenceops-ai.westus3.cloudapp.azure.com" width="160">
 
 **Public URL: <https://conferenceops-ai.westus3.cloudapp.azure.com>** (AKS; HTTPS with a self-signed certificate
 since [#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57), so the browser warns once; plain HTTP stays
-on at <http://conferenceops-ai.westus3.cloudapp.azure.com>). It serves the version `92fd275`, the merge of
-[#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60), deployed by
-[run 42715764717](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715764717) at 22:55 (later merges
-deploy in turn). Checked by hand at 22:03 UTC, and again over HTTPS at 22:55–22:57 UTC:
+on at <http://conferenceops-ai.westus3.cloudapp.azure.com>). It serves the version `95ebc52`, the merge of
+[#68](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/68), deployed by [run 42725369776](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42725369776) at 00:06 UTC on November 10. Checked by
+hand at 22:03 UTC, over HTTPS at 22:55–22:57 UTC, and again at 23:40 UTC for the community feed:
 
 | On the public URL | Evidence |
 |---|---|
@@ -28,14 +51,17 @@ deploy in turn). Checked by hand at 22:03 UTC, and again over HTTPS at 22:55–2
 | Admission control on discovery (#32, #36) | one hand-sent search was answered `503 {"code":"DISCOVERY_CAPACITY_EXHAUSTED","retry_after_seconds":1,…}` while the pod was at its limit; the next one got 200 |
 | Cited answers from published transcripts, `POST /api/v1/ask` | "What did the AI SRE agent get wrong at CloudBridge?" → a two-sentence answer with 2 citations into "AI SRE in Practice: What Our Agent Got Wrong", `retrievalMode: hybrid`, `isFictional: true` |
 | Captioned replays | `/media/cloudbridge/clip-1.mp4` (video/mp4, 570 KB) and `clip-1.vtt` (text/vtt), `manifest.json`; clips 2 and 3 alongside |
-| Deploy on every merge, marked in Dash0 | 23 deploy runs by 22:57 UTC: 20 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge ([deploys](#deploys)) |
+| The community feed, `GET` and `POST /api/v1/community/posts` | at 23:40: the seeded conversation (3 posts by fictional personas, with 2 and 1 replies), `isCommunityContent: true`; an empty post → 422; a reply to an unknown post → `404 {"detail":"Not found"}`; `/community` serves the page |
+| Deploy on every merge, marked in Dash0 | 31 deploy runs by 00:06 UTC: 28 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge ([deploys](#deploys)) |
 
 **Measured since the first version of this page:** the incident run and its recovery window (below), Radar's
 verify step after #35, and the CloudBridge replays, transcripts and cited answers
 ([#37](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/37), merged as `ec79843` at 21:49 and checked on the
 public URL at 22:03), then the attendee portal ([#50](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/50)),
 HTTPS ([#57](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/57)) and the talk-card actions
-([#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60)), checked over HTTPS at 22:55–22:57. **Pending**
+([#60](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/60)), checked over HTTPS at 22:55–22:57; then the
+review standards ([#62](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/62)), consistent button spacing ([#63](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/63)), the community feed
+([#64](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/64)), the favicon ([#65](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/65)) and the Ask bar alignment ([#67](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/67)). **Pending**
 (not claimed): a spoken question through the microphone on the public URL in a browser (HTTPS makes it possible; the
 builder has verified dictation on a local instance only), and Read aloud heard in a browser (its tests use a fake
 speech synthesis). Details under each track and in [Known limitations](#known-limitations).
@@ -104,6 +130,11 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
   never leaves the device; one card speaks at a time, and a browser without an on-device voice gets a disabled button
   that says so. The cited answer has Read aloud too. The writes were checked on the public URL at 22:55 (table above);
   Read aloud is covered by tests against a fake speech synthesis and not yet heard in a browser by the builder.
+- **A community feed** ([#64](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/64)). The Community page lists posts newest first with their replies (one
+  level), and lets the current persona post and reply through labeled fields with one polite status line. The author
+  is always the persona in `X-Demo-Profile-ID` (AUTHZ-1); the text is public community content, labeled so and never
+  an official fact (ACCESS-1), and never logged (PRIV-1). The seed Job adds a short conversation between fictional
+  personas.
 - **Knowledge after the talk,** on the fictional CloudBridge Summit only. Three concluded sessions have a captioned
   replay: a simulated excerpt (text written for the demo, read by an OpenAI voice over a title slide, labeled as
   such everywhere) with WebVTT captions timed from the generated audio. A question in the Ask bar is answered from
@@ -119,7 +150,23 @@ ConferenceOps AI helps an attendee find the next talk worth their time, with hon
 
 ## Evidence by track
 
-### Gitar: never merge broken
+### Sonar (Gitar): never merge broken
+
+| Metric (November 9) | Count |
+|---|---|
+| Pull requests opened, all labeled `gitar-managed` (auto-apply on) | 66 |
+| Reviewed by Gitar / approved by Gitar | 62 / 50 |
+| Merged / merged after Gitar's approval / merged by Gitar itself | 44 / 41 / 11 |
+| Inline findings / resolved / on how many PRs | 51 / 50 / 27 |
+| Commits Gitar pushed (auto-apply fixes and merges of them) / on how many PRs | 81 / 35 |
+| CI failure fixed by Gitar | [#64](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/64): `data-integration` failed (`assert -6 == 6`, the driver's rowcount on an upsert); Gitar pushed the fix |
+| Planted defect that CI passed and Gitar blocked | [#28](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/28) (a fixed UTC offset; TIME-1), held open |
+| Merged before Gitar's approval (disclosed) | 3, at the code freeze: [#64](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/64), [#65](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/65), [#66](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/66), every CI check green |
+
+Rules Gitar reviews against: [`AGENTS.md`](AGENTS.md) (14 rule IDs), [`.gitar/review/`](.gitar/review) (what is easy to
+miss here, the severity policy, and seven engineering standards with `STD-` IDs, [#62](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/62)),
+[`.gitar/rules/`](.gitar/rules) (6 rules) and [`.gitar/config/`](.gitar/config) (risk, apply, approve, merge).
+
 
 Every change after the bootstrap commit went through a pull request that Gitar reviewed. By 21:30, 34 pull requests
 had been opened: 25 merged, 8 closed without merging (replaced, see the gotcha), 1 held open as evidence. More are
@@ -168,6 +215,15 @@ merging for that reason and replaced by a fresh pull request from the same branc
 #9 → #24, #11 → #22, #17 → #25 → #27 and #33 → #35. The Build log lists each as "closed without merging".
 
 ### Dash0 and Agent0
+
+| Signal in dataset `conferenceops`, 10:00 AM–5:00 PM MST | Count |
+|---|---|
+| Spans (every service, stable HTTP semconv, query text stripped) | 842,020 |
+| Log records (structured, with trace IDs) | 421,820 |
+| Real browser page views (Dash0 Web SDK) | 257 |
+| Dashboards / check rules / Agent0 automations, all as code | 1 / 2 / 1 |
+| Deploys marked (`dash0.deployment`, per service) | 31 |
+
 
 Everything Dash0 is code in [`observability/dash0/`](observability/dash0) (dataset `conferenceops`), applied by
 [`scripts/dash0-apply.sh`](scripts/dash0-apply.sh) ([#13](https://github.com/DSavaliya-Labs/conferenceops-ai/pull/13),
@@ -299,8 +355,8 @@ One discovery pod, no admission control yet, a k6 Job inside the cluster against
 Every merge to `main` builds both images and runs `helm upgrade` on AKS
 ([`deploy.yml`](.github/workflows/deploy.yml); Azure sign-in through OIDC, no stored Azure secret), checks that the
 public URL serves the app, its config and a search (over HTTP and, since #57, HTTPS), and marks the deploy in
-Dash0. There were 23 deploy runs on November 9 by 22:57 UTC: 20 succeeded, 1 failed, 2 were cancelled by a newer
-merge. At 22:57 the public URL reported `92fd275`, the #60 deployment (see above):
+Dash0. There were 31 deploy runs by 00:06 UTC: 28 succeeded, 1 failed, 2 were cancelled by a newer merge. At 00:06
+the public URL served `95ebc52`, the #68 deployment (see above):
 
 | Run | Commit | What happened |
 |---|---|---|
@@ -320,6 +376,14 @@ merge. At 22:57 the public URL reported `92fd275`, the #60 deployment (see above
 | [42714919007](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42714919007) | `e2d0be9` (#59) | the submission write-up: success |
 | [42715175425](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715175425) | `571d09d` (#57) | HTTPS: the run created the self-signed certificate Secret once, and its check passed over `https://` as well as `http://` |
 | [42715764717](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42715764717) | `92fd275` (#60) | the talk-card actions: success; the agenda writes checked on the public URL at 22:55 |
+| [42717358113](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42717358113) | `082224c` (#61) | the README with HTTPS and the card actions: success |
+| [42719405004](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42719405004) | `711fdd4` (#63) | button spacing: success; the new `.actions` rule checked in the live stylesheet |
+| [42720801872](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42720801872) | `52048dd` (#62) | the Gitar review standards: success |
+| [42721656408](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42721656408) | `00d6b53` (#64) | the community feed: success; migration `0003` and the seeded conversation, checked at 23:40 |
+| [42721683092](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42721683092) | `fcb957a` (#65) | the favicon: success |
+| [42722759919](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42722759919) | `361543a` (#66) | SUBMISSION.md: success |
+| [42724440932](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42724440932) | `ace2252` (#67) | the Ask bar alignment: success |
+| [42725369776](https://github.com/DSavaliya-Labs/conferenceops-ai/actions/runs/42725369776) | `95ebc52` (#68) | SUBMISSION.md as the submission: success |
 
 ## Architecture
 
