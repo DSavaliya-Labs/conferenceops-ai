@@ -69,7 +69,7 @@ exactly when it tends to fall over.
 | | |
 |---|---|
 | Pull requests merged | **43** between 10:51 AM and 4:56 PM MST, 40 after Gitar's approval |
-| Deploys to AKS | **30** runs, 26 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge |
+| Deploys to AKS | **30** runs, 26 succeeded, 1 failed and was fixed by the next merge, 2 cancelled by a newer merge, 1 in progress at 23:57 UTC |
 | Incident | check failed 21:29:06 UTC at 26.6% errors; Agent0's fix (replicas 1 → 3) approved by Gitar 2½ minutes after it opened; recovery **4,802 requests/min, 0 5xx, p95 0.33 s**; check resolved 21:50:06 |
 | Capacity | one discovery pod: **64 requests/s** at p95 411 ms; above that, admission control answers a fast 503 instead of a restart |
 | Search | 624 sessions with 1,536-dimension embeddings; "something about eBPF and security" finds "Kernel Eyes", whose title never says eBPF |
